@@ -4,7 +4,7 @@ resource "aws_s3_bucket" "audiobook_data" {
 
   force_destroy = var.bucket_force_destroy
 
-  tags = var.bucket_tags
+  tags = merge(var.shared_tags, var.s3_bucket_tags)
 }
 
 resource "aws_s3_bucket_versioning" "versioning" {

@@ -2,17 +2,67 @@ aws_region = "us-east-1"
 aws_profile = "your-aws-profile"
 
 # S3 configuration
-bucket_name = "your-unique-bucket-name"
+bucket_name = "nlp-poc-bucket-dev"
 bucket_force_destroy = true
-bucket_tags = {
-  Name        = "AudiobookDataBucket"
+# Shared tags for all resources
+shared_tags = {
   Environment = "dev"
   "caylent:owner" = "your-email@caylent.com"
+  Project = "nlp-poc"
+}
+
+# Resource-specific tags (customize as needed)
+s3_bucket_tags = {
+  Name = "NLP-POC-S3-Bucket"
+  Purpose = "book-storage"
+  ResourceType = "s3-bucket"
+}
+
+opensearch_domain_tags = {
+  Name = "NLP-POC-OpenSearch-Domain"
+  Purpose = "vector-search"
+  ResourceType = "opensearch-domain"
+}
+
+vpc_tags = {
+  Name = "nlp-poc-vpc"
+  Purpose = "opensearch-networking"
+  ResourceType = "vpc"
+}
+
+subnet_tags = {
+  Name = "nlp-poc-subnet"
+  Purpose = "opensearch-networking"
+  ResourceType = "subnet"
+}
+
+security_group_tags = {
+  Name = "nlp-poc-security-group"
+  Purpose = "opensearch-security"
+  ResourceType = "security-group"
+}
+
+route_table_tags = {
+  Name = "nlp-poc-route-table"
+  Purpose = "opensearch-networking"
+  ResourceType = "route-table"
+}
+
+internet_gateway_tags = {
+  Name = "nlp-poc-internet-gateway"
+  Purpose = "opensearch-networking"
+  ResourceType = "internet-gateway"
+}
+
+iam_policy_tags = {
+  Name = "nlp-poc-bedrock-policy"
+  Purpose = "ai-permissions"
+  ResourceType = "iam-policy"
 }
 enable_versioning = true 
 
 # OpenSearch configuration
-opensearch_domain_name = "nlp-embeddings-domain"
+opensearch_domain_name = "nlp-poc-embeddings-dev"
 opensearch_instance_type = "t3.small.search"
 opensearch_instance_count = 1
 opensearch_volume_size = 10 

@@ -32,7 +32,7 @@ resource "aws_iam_policy" "bedrock_embedding_policy" {
     ]
   })
 
-  tags = var.bucket_tags
+  tags = merge(var.shared_tags, var.iam_policy_tags)
 }
 
 # Output the policy ARN for reference

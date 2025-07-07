@@ -54,7 +54,7 @@ resource "aws_opensearch_domain" "embeddings_domain" {
     tls_security_policy = "Policy-Min-TLS-1-2-2019-07"
   }
 
-  tags = var.bucket_tags
+  tags = merge(var.shared_tags, var.opensearch_domain_tags)
 }
 
 # VPC for OpenSearch
@@ -63,9 +63,7 @@ resource "aws_vpc" "opensearch_vpc" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = merge(var.bucket_tags, {
-    Name = "opensearch-vpc"
-  })
+  tags = merge(var.shared_tags, var.vpc_tags)
 }
 
 # Subnet for OpenSearch
@@ -74,18 +72,14 @@ resource "aws_subnet" "opensearch_subnet" {
   cidr_block        = "10.0.1.0/24"
   availability_zone = "${var.aws_region}a"
 
-  tags = merge(var.bucket_tags, {
-    Name = "opensearch-subnet"
-  })
+  tags = merge(var.shared_tags, var.subnet_tags)
 }
 
 # Internet Gateway
 resource "aws_internet_gateway" "opensearch_igw" {
   vpc_id = aws_vpc.opensearch_vpc.id
 
-  tags = merge(var.bucket_tags, {
-    Name = "opensearch-igw"
-  })
+  tags = merge(var.shared_tags, var.internet_gateway_tags)
 }
 
 # Route Table
@@ -97,9 +91,7 @@ resource "aws_route_table" "opensearch_rt" {
     gateway_id = aws_internet_gateway.opensearch_igw.id
   }
 
-  tags = merge(var.bucket_tags, {
-    Name = "opensearch-rt"
-  })
+  tags = merge(var.shared_tags, var.route_table_tags)
 }
 
 # Route Table Association
@@ -138,7 +130,5 @@ resource "aws_security_group" "opensearch_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(var.bucket_tags, {
-    Name = "opensearch-sg"
-  })
+  tags = merge(var.shared_tags, var.security_group_tags)
 } 
