@@ -1,0 +1,18 @@
+aws_region = "us-east-1"
+aws_profile = "your-aws-profile"
+
+# S3 configuration
+bucket_name = "your-unique-bucket-name"
+bucket_force_destroy = true
+bucket_tags = {
+  Name        = "AudiobookDataBucket"
+  Environment = "dev"
+  "caylent:owner" = "your-email@caylent.com"
+}
+enable_versioning = true 
+
+# OpenSearch configuration
+opensearch_domain_name = "nlp-embeddings-domain"
+opensearch_instance_type = "t3.small.search"
+opensearch_instance_count = 1
+opensearch_volume_size = 10 
