@@ -28,3 +28,16 @@ resource "aws_s3_bucket_versioning" "versioning" {
     status = "Enabled"
   }
 }
+
+# S3 bucket organization - create folders for books and embeddings
+resource "aws_s3_object" "books_folder" {
+  bucket = aws_s3_bucket.audiobook_data.id
+  key    = "books/"
+  source = "/dev/null"
+}
+
+resource "aws_s3_object" "embeddings_folder" {
+  bucket = aws_s3_bucket.audiobook_data.id
+  key    = "embeddings/"
+  source = "/dev/null"
+}
