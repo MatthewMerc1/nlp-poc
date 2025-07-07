@@ -1,18 +1,4 @@
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
-}
-
+# S3 Bucket for storing books and embeddings
 resource "aws_s3_bucket" "audiobook_data" {
   bucket = var.bucket_name
 
@@ -40,4 +26,4 @@ resource "aws_s3_object" "embeddings_folder" {
   bucket = aws_s3_bucket.audiobook_data.id
   key    = "embeddings/"
   source = "/dev/null"
-}
+} 

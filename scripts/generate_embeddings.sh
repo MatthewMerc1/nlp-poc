@@ -3,7 +3,7 @@
 # Script to generate embeddings for books using Amazon Bedrock
 
 # Get the bucket name from Terraform output
-BUCKET_NAME=$(terraform output -raw bucket_name 2>/dev/null)
+BUCKET_NAME=$(cd ../terraform && terraform output -raw bucket_name 2>/dev/null)
 
 if [ -z "$BUCKET_NAME" ]; then
     echo "Error: Could not get bucket name from Terraform output."

@@ -16,4 +16,20 @@ output "bucket_region" {
 output "bucket_tags" {
   description = "Tags applied to the S3 bucket"
   value       = aws_s3_bucket.audiobook_data.tags
+}
+
+# OpenSearch outputs
+output "opensearch_domain_endpoint" {
+  description = "OpenSearch domain endpoint"
+  value       = aws_opensearch_domain.embeddings_domain.endpoint
+}
+
+output "opensearch_domain_arn" {
+  description = "OpenSearch domain ARN"
+  value       = aws_opensearch_domain.embeddings_domain.arn
+}
+
+output "opensearch_dashboard_url" {
+  description = "OpenSearch Dashboard URL"
+  value       = "https://${aws_opensearch_domain.embeddings_domain.endpoint}/_dashboards/"
 } 
