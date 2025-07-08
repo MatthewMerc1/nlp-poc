@@ -159,51 +159,57 @@ class OpenSearchLoader:
         
         print(f"Indexing {len(embeddings_data['embeddings'])} embeddings for {book_title}")
         
-        # Prepare bulk indexing data
-        bulk_data = []
-        for embedding_doc in embeddings_data['embeddings']:
-            # Index action
-            bulk_data.append({
-                "index": {
-                    "_index": index_name,
-                    "_id": f"{book_title}-{embedding_doc['chunk_index']}"
-                }
-            })
-            
-            # Document data
-            bulk_data.append({
-                "book_title": book_title,
-                "author": author,
-                "chunk_index": embedding_doc['chunk_index'],
-                "text": embedding_doc['text'],
-                "text_vector": embedding_doc['embedding'],
-                "model_id": model_id,
-                "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-            })
+        # Process in smaller batches
+        batch_size = 50  # Reduced from processing all at once
+        total_indexed = 0
         
-        # Perform bulk indexing
-        try:
-            url = f"{self.opensearch_endpoint}/_bulk"
-            payload = "\n".join([json.dumps(doc) for doc in bulk_data]) + "\n"
+        for i in range(0, len(embeddings_data['embeddings']), batch_size):
+            batch = embeddings_data['embeddings'][i:i + batch_size]
             
-            response = self.session.post(url, data=payload)
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('errors', True):
-                    print(f"Some errors occurred during bulk indexing: {result}")
-                    return 0
-                else:
-                    indexed_count = len(result.get('items', []))
-                    print(f"Successfully indexed {indexed_count} documents")
-                    return indexed_count
-            else:
-                print(f"Error during bulk indexing: {response.status_code} - {response.text}")
-                return 0
+            # Prepare bulk indexing data for this batch
+            bulk_data = []
+            for embedding_doc in batch:
+                # Index action
+                bulk_data.append({
+                    "index": {
+                        "_index": index_name,
+                        "_id": f"{book_title}-{embedding_doc['chunk_index']}"
+                    }
+                })
                 
-        except Exception as e:
-            print(f"Error during bulk indexing: {e}")
-            return 0
+                # Document data
+                bulk_data.append({
+                    "book_title": book_title,
+                    "author": author,
+                    "chunk_index": embedding_doc['chunk_index'],
+                    "text": embedding_doc['text'],
+                    "text_vector": embedding_doc['embedding'],
+                    "model_id": model_id,
+                    "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                })
+            
+            # Perform bulk indexing for this batch
+            try:
+                url = f"{self.opensearch_endpoint}/_bulk"
+                payload = "\n".join([json.dumps(doc) for doc in bulk_data]) + "\n"
+                
+                response = self.session.post(url, data=payload)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get('errors', True):
+                        print(f"Some errors occurred in batch: {result}")
+                    else:
+                        batch_indexed = len(result.get('items', []))
+                        total_indexed += batch_indexed
+                        print(f"Successfully indexed batch of {batch_indexed} documents")
+                else:
+                    print(f"Error during batch indexing: {response.status_code} - {response.text}")
+                    
+            except Exception as e:
+                print(f"Error during batch indexing: {e}")
+        
+        return total_indexed
     
     def search_similar_text(self, query_text: str, embedding: List[float], k: int = 5, index_name: str = "book-embeddings"):
         """Search for similar text using vector similarity."""
