@@ -21,7 +21,12 @@ nlp-poc/
 │   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch
 │   ├── upload_books.sh          # Shell script to upload books
 │   ├── generate_embeddings.sh   # Shell script to generate embeddings
-│   └── load_to_opensearch.sh    # Shell script to load to OpenSearch
+│   ├── load_to_opensearch.sh    # Shell script to load to OpenSearch
+│   ├── package_lambda.sh        # Package Lambda function
+│   └── test_semantic_api.py     # Test semantic search API
+├── lambda/             # Lambda function code
+│   ├── lambda_function.py       # Main Lambda function
+│   └── requirements.txt         # Lambda dependencies
 ├── requirements.txt    # Python dependencies
 ├── .gitignore         # Git ignore rules
 └── README.md          # This file
@@ -61,7 +66,36 @@ cd scripts
 ./load_to_opensearch.sh
 ```
 
-### 5. Access OpenSearch Dashboard
+### 5. Load Embeddings into OpenSearch
+
+```bash
+cd scripts
+./load_to_opensearch.sh
+```
+
+### 6. Deploy API Gateway and Lambda
+
+```bash
+# Package Lambda function
+./scripts/package_lambda.sh
+
+# Deploy infrastructure
+cd terraform
+terraform apply
+```
+
+### 7. Test Semantic Search API
+
+```bash
+# Get the API URL
+cd terraform
+terraform output api_gateway_url
+
+# Test the API
+python scripts/test_semantic_api.py "https://your-api-url" "What is the meaning of life?"
+```
+
+### 8. Access OpenSearch Dashboard
 
 ```bash
 cd terraform
@@ -106,6 +140,8 @@ Key variables in `terraform/terraform.tfvars`:
 2. **OpenSearch Domain** - Vector search database
 3. **VPC & Networking** - Isolated network for OpenSearch
 4. **IAM Policies** - Permissions for Bedrock and S3
+5. **API Gateway** - REST API for semantic search
+6. **Lambda Function** - Serverless semantic search handler
 
 ### OpenSearch Index Structure
 
@@ -124,11 +160,57 @@ Key variables in `terraform/terraform.tfvars`:
 - **Cosine Similarity**: Semantic matching metric
 - **Hybrid Search**: Combine vector and text search
 
+## 🌐 API Usage
+
+### Semantic Search Endpoint
+
+**URL**: `POST /search`
+
+**Request Body**:
+```json
+{
+  "query": "What is the meaning of life?",
+  "size": 5
+}
+```
+
+**Response**:
+```json
+{
+  "query": "What is the meaning of life?",
+  "results": [
+    {
+      "score": 0.9234,
+      "title": "The Great Gatsby",
+      "author": "F. Scott Fitzgerald",
+      "book_id": "gatsby",
+      "chapter": "Chapter 1",
+      "content": "In my younger and more vulnerable years my father gave me some advice..."
+    }
+  ],
+  "total_results": 5
+}
+```
+
+### Example Usage
+
+```bash
+# Using curl
+curl -X POST "https://your-api-gateway-url/prod/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the meaning of life?", "size": 5}'
+
+# Using Python
+python scripts/test_semantic_api.py "https://your-api-gateway-url/prod/search" "What is the meaning of life?"
+```
+
 ## 💰 Cost Estimation
 
 - **OpenSearch**: ~$30/month (t3.small.search)
 - **S3 Storage**: ~$0.023/GB/month
 - **Bedrock Embeddings**: ~$0.0001 per 1K tokens
+- **API Gateway**: ~$3.50/million requests
+- **Lambda**: ~$0.20 per million requests + compute time
 - **Data Transfer**: Minimal for this use case
 
 ## 🛠️ Development
