@@ -51,11 +51,16 @@ resource "aws_api_gateway_deployment" "semantic_deployment" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.semantic_api.id
-  stage_name  = "prod"
 
   lifecycle {
     create_before_destroy = true
   }
+}
+
+resource "aws_api_gateway_stage" "semantic_stage" {
+  stage_name    = "dev"
+  rest_api_id   = aws_api_gateway_rest_api.semantic_api.id
+  deployment_id = aws_api_gateway_deployment.semantic_deployment.id
 }
 
 # Lambda Function
@@ -165,7 +170,7 @@ resource "aws_iam_role_policy_attachment" "semantic_lambda_basic_policy_attachme
 # Outputs
 output "api_gateway_url" {
   description = "URL of the API Gateway endpoint"
-  value       = "${aws_api_gateway_deployment.semantic_deployment.invoke_url}/search"
+  value       = "${aws_api_gateway_stage.semantic_stage.invoke_url}/search"
 }
 
 output "lambda_function_name" {

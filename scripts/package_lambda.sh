@@ -17,13 +17,13 @@ cp lambda/lambda_function.py $PACKAGE_DIR/
 # Install dependencies
 pip install -r lambda/requirements.txt -t $PACKAGE_DIR/
 
-# Create ZIP file
+# Create ZIP file in terraform directory
 cd $PACKAGE_DIR
-zip -r ../lambda_function.zip .
+zip -r ../terraform/lambda_function.zip .
 cd ..
 
 # Clean up
 rm -rf $PACKAGE_DIR
 
-echo "Lambda function packaged as lambda_function.zip"
-echo "You can now run: terraform apply" 
+echo "Lambda function packaged as terraform/lambda_function.zip"
+echo "You can now run: cd terraform && terraform apply" 

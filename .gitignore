@@ -2,6 +2,9 @@
 **/.terraform/*
 **/venv/*
 
+# Ignore lambda function zip file
+**/terraform/lambda_function.zip
+
 # .tfstate files
 *.tfstate
 *.tfstate.*
