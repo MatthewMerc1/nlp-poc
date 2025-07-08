@@ -40,7 +40,7 @@ variable "opensearch_domain_name" {
 variable "opensearch_instance_type" {
   description = "Instance type for OpenSearch nodes"
   type        = string
-  default     = "t3.small.search"
+  default     = "t3.medium.search"
 }
 
 variable "opensearch_instance_count" {
