@@ -3,7 +3,7 @@
 # Script to load embeddings into OpenSearch
 
 # Get the bucket name from Terraform output
-BUCKET_NAME=$(cd ../terraform && terraform output -raw bucket_name 2>/dev/null)
+BUCKET_NAME=$(cd terraform && terraform output -raw bucket_name 2>/dev/null)
 
 if [ -z "$BUCKET_NAME" ]; then
     echo "Error: Could not get bucket name from Terraform output."
@@ -12,7 +12,7 @@ if [ -z "$BUCKET_NAME" ]; then
 fi
 
 # Get the OpenSearch endpoint from Terraform output
-OPENSEARCH_ENDPOINT=$(cd ../terraform && terraform output -raw opensearch_domain_endpoint 2>/dev/null)
+OPENSEARCH_ENDPOINT=$(cd terraform && terraform output -raw opensearch_domain_endpoint 2>/dev/null)
 
 if [ -z "$OPENSEARCH_ENDPOINT" ]; then
     echo "Error: Could not get OpenSearch endpoint from Terraform output."
@@ -24,8 +24,8 @@ echo "Found S3 bucket: $BUCKET_NAME"
 echo "Found OpenSearch endpoint: $OPENSEARCH_ENDPOINT"
 
 # Check if Python script exists
-if [ ! -f "load_embeddings_to_opensearch.py" ]; then
-    echo "Error: load_embeddings_to_opensearch.py not found"
+if [ ! -f "scripts/load_embeddings_to_opensearch.py" ]; then
+    echo "Error: scripts/load_embeddings_to_opensearch.py not found"
     exit 1
 fi
 
@@ -48,9 +48,9 @@ echo "You can check the status in the AWS console."
 
 # Run the loading script
 echo "Starting embedding load to OpenSearch..."
-python load_embeddings_to_opensearch.py \
+python scripts/load_embeddings_to_opensearch.py \
     --bucket "$BUCKET_NAME" \
-    --opensearch-endpoint "$OPENSEARCH_ENDPOINT" \
+    --opensearch-endpoint "https://$OPENSEARCH_ENDPOINT" \
     --profile "caylent-dev-test" \
     --index "book-embeddings"
 
@@ -60,4 +60,4 @@ echo "You can now access OpenSearch Dashboard at:"
 echo "https://$OPENSEARCH_ENDPOINT/_dashboards/"
 echo ""
 echo "Or use the URL from Terraform output:"
-cd ../terraform && terraform output opensearch_dashboard_url 
+cd terraform && terraform output opensearch_dashboard_url 

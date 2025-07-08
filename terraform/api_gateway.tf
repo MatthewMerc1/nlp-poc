@@ -4,8 +4,8 @@ resource "aws_api_gateway_rest_api" "semantic_api" {
   description = "API Gateway for semantic queries against OpenSearch"
 
   tags = merge(var.shared_tags, {
-    Name = "nlp-poc-semantic-api"
-    Purpose = "semantic-search-api"
+    Name         = "nlp-poc-semantic-api"
+    Purpose      = "semantic-search-api"
     ResourceType = "api-gateway"
   })
 }
@@ -65,25 +65,30 @@ resource "aws_api_gateway_stage" "semantic_stage" {
 
 # Lambda Function
 resource "aws_lambda_function" "semantic_lambda" {
-  filename         = "lambda_function.zip"
-  function_name    = "nlp-poc-semantic-search"
-  role            = aws_iam_role.semantic_lambda_role.arn
-  handler         = "lambda_function.lambda_handler"
-  runtime         = "python3.11"
-  timeout         = 30
-  memory_size     = 512
+  filename      = "lambda_function.zip"
+  function_name = "nlp-poc-semantic-search"
+  role          = aws_iam_role.semantic_lambda_role.arn
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.11"
+  timeout       = 30
+  memory_size   = 512
+
+  vpc_config {
+    subnet_ids         = [aws_subnet.opensearch_subnet.id]
+    security_group_ids = [aws_security_group.opensearch_sg.id]
+  }
 
   environment {
     variables = {
       OPENSEARCH_ENDPOINT = aws_opensearch_domain.embeddings_domain.endpoint
-      OPENSEARCH_INDEX    = "books"
+      OPENSEARCH_INDEX    = "book-embeddings"
       BEDROCK_MODEL_ID    = "amazon.titan-embed-text-v1"
     }
   }
 
   tags = merge(var.shared_tags, {
-    Name = "nlp-poc-semantic-lambda"
-    Purpose = "semantic-search"
+    Name         = "nlp-poc-semantic-lambda"
+    Purpose      = "semantic-search"
     ResourceType = "lambda-function"
   })
 }
@@ -106,8 +111,8 @@ resource "aws_iam_role" "semantic_lambda_role" {
   })
 
   tags = merge(var.shared_tags, {
-    Name = "nlp-poc-semantic-lambda-role"
-    Purpose = "lambda-execution"
+    Name         = "nlp-poc-semantic-lambda-role"
+    Purpose      = "lambda-execution"
     ResourceType = "iam-role"
   })
 }
@@ -144,13 +149,25 @@ resource "aws_iam_policy" "semantic_lambda_policy" {
         Resource = [
           "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v1"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeSecurityGroups"
+        ]
+        Resource = "*"
       }
     ]
   })
 
   tags = merge(var.shared_tags, {
-    Name = "nlp-poc-semantic-lambda-policy"
-    Purpose = "lambda-permissions"
+    Name         = "nlp-poc-semantic-lambda-policy"
+    Purpose      = "lambda-permissions"
     ResourceType = "iam-policy"
   })
 }
@@ -181,4 +198,5 @@ output "lambda_function_name" {
 output "opensearch_endpoint" {
   description = "OpenSearch domain endpoint"
   value       = aws_opensearch_domain.embeddings_domain.endpoint
-} 
+}
+

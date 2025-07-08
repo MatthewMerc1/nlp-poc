@@ -66,7 +66,21 @@ resource "aws_vpc" "opensearch_vpc" {
   tags = merge(var.shared_tags, var.vpc_tags)
 }
 
-# Subnet for OpenSearch
+# Public Subnet for NAT Gateway
+resource "aws_subnet" "public_subnet" {
+  vpc_id                  = aws_vpc.opensearch_vpc.id
+  cidr_block              = "10.0.0.0/24"
+  availability_zone       = "${var.aws_region}a"
+  map_public_ip_on_launch = true
+
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-public-subnet"
+    Purpose      = "nat-gateway"
+    ResourceType = "subnet"
+  })
+}
+
+# Private Subnet for OpenSearch and Lambda
 resource "aws_subnet" "opensearch_subnet" {
   vpc_id            = aws_vpc.opensearch_vpc.id
   cidr_block        = "10.0.1.0/24"
@@ -82,8 +96,8 @@ resource "aws_internet_gateway" "opensearch_igw" {
   tags = merge(var.shared_tags, var.internet_gateway_tags)
 }
 
-# Route Table
-resource "aws_route_table" "opensearch_rt" {
+# Public Route Table
+resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.opensearch_vpc.id
 
   route {
@@ -91,10 +105,32 @@ resource "aws_route_table" "opensearch_rt" {
     gateway_id = aws_internet_gateway.opensearch_igw.id
   }
 
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-public-rt"
+    Purpose      = "nat-gateway"
+    ResourceType = "route-table"
+  })
+}
+
+# Associate Public Subnet with Public Route Table
+resource "aws_route_table_association" "public_rta" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
+# Private Route Table
+resource "aws_route_table" "opensearch_rt" {
+  vpc_id = aws_vpc.opensearch_vpc.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gw.id
+  }
+
   tags = merge(var.shared_tags, var.route_table_tags)
 }
 
-# Route Table Association
+# Associate Private Subnet with Private Route Table
 resource "aws_route_table_association" "opensearch_rta" {
   subnet_id      = aws_subnet.opensearch_subnet.id
   route_table_id = aws_route_table.opensearch_rt.id
@@ -131,4 +167,24 @@ resource "aws_security_group" "opensearch_sg" {
   }
 
   tags = merge(var.shared_tags, var.security_group_tags)
-} 
+}
+
+# Elastic IP for NAT Gateway
+resource "aws_eip" "nat_eip" {
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-nat-eip"
+    Purpose      = "nat-gateway"
+    ResourceType = "eip"
+  })
+}
+
+# NAT Gateway in Public Subnet
+resource "aws_nat_gateway" "nat_gw" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = aws_subnet.public_subnet.id
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-nat-gateway"
+    Purpose      = "nat-gateway"
+    ResourceType = "nat-gateway"
+  })
+}

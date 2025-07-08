@@ -47,15 +47,15 @@ def generate_embedding(text):
         request_body = {
             "inputText": text
         }
-        
+        logger.info(f"Generating embedding for text: {text}")
         response = bedrock.invoke_model(
             modelId=BEDROCK_MODEL_ID,
             body=json.dumps(request_body)
         )
-        
+        logger.info(f"Response: {response}")
         response_body = json.loads(response.get('body').read())
         embedding = response_body.get('embedding')
-        
+        logger.info(f"Embedding: {embedding}")
         return embedding
     except Exception as e:
         logger.error(f"Error generating embedding: {str(e)}")
@@ -168,4 +168,18 @@ def lambda_handler(event, context):
                 'error': 'Internal server error',
                 'message': str(e)
             })
-        } 
+        }
+
+# Add this to your Lambda for debugging
+try:
+    # Check if index exists
+    client = create_opensearch_client()
+    index_response = client.indices.exists(index=OPENSEARCH_INDEX)
+    logger.info(f"Index {OPENSEARCH_INDEX} exists: {index_response}")
+    
+    # List all indices
+    indices_response = client.cat.indices(format='json')
+    logger.info(f"All indices: {indices_response}")
+    
+except Exception as e:
+    logger.error(f"Error checking indices: {str(e)}") 

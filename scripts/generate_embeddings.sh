@@ -3,7 +3,7 @@
 # Script to generate embeddings for books using Amazon Bedrock
 
 # Get the bucket name from Terraform output
-BUCKET_NAME=$(cd ../terraform && terraform output -raw bucket_name 2>/dev/null)
+BUCKET_NAME=$(cd terraform && terraform output -raw bucket_name 2>/dev/null)
 
 if [ -z "$BUCKET_NAME" ]; then
     echo "Error: Could not get bucket name from Terraform output."
@@ -14,8 +14,8 @@ fi
 echo "Found S3 bucket: $BUCKET_NAME"
 
 # Check if Python script exists
-if [ ! -f "generate_embeddings.py" ]; then
-    echo "Error: generate_embeddings.py not found"
+if [ ! -f "scripts/generate_embeddings.py" ]; then
+    echo "Error: scripts/generate_embeddings.py not found"
     exit 1
 fi
 
@@ -49,7 +49,7 @@ fi
 
 # Run the embedding generation script
 echo "Starting embedding generation..."
-python generate_embeddings.py \
+python scripts/generate_embeddings.py \
     --bucket "$BUCKET_NAME" \
     --profile "caylent-dev-test" \
     --model "amazon.titan-embed-text-v1" \

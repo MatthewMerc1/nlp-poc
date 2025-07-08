@@ -3,7 +3,7 @@
 # Script to upload Project Gutenberg books to S3 bucket
 
 # Get the bucket name from Terraform output
-BUCKET_NAME=$(cd ../terraform && terraform output -raw bucket_name 2>/dev/null)
+BUCKET_NAME=$(cd terraform && terraform output -raw bucket_name 2>/dev/null)
 
 if [ -z "$BUCKET_NAME" ]; then
     echo "Error: Could not get bucket name from Terraform output."
@@ -14,8 +14,8 @@ fi
 echo "Found S3 bucket: $BUCKET_NAME"
 
 # Check if Python script exists
-if [ ! -f "upload_gutenberg.py" ]; then
-    echo "Error: upload_gutenberg.py not found"
+if [ ! -f "scripts/upload_gutenberg.py" ]; then
+    echo "Error: scripts/upload_gutenberg.py not found"
     exit 1
 fi
 
@@ -33,6 +33,6 @@ pip install -r requirements.txt
 
 # Run the upload script
 echo "Starting book upload..."
-python upload_gutenberg.py --bucket "$BUCKET_NAME" --profile "caylent-dev-test" --limit 5
+python scripts/upload_gutenberg.py --bucket "$BUCKET_NAME" --profile "caylent-dev-test" --limit 10
 
 echo "Upload complete!" 

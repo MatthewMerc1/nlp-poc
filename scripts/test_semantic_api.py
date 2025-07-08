@@ -6,6 +6,18 @@ Test script for the semantic search API
 import requests
 import json
 import sys
+import subprocess
+
+def get_api_url():
+    try:
+        url = subprocess.check_output(
+            ["terraform", "output", "-raw", "api_gateway_url"],
+            cwd="terraform"
+        ).decode("utf-8").strip()
+        return url
+    except Exception as e:
+        print("Could not get API Gateway URL from Terraform:", e)
+        return None
 
 def test_semantic_search(api_url, query, size=5):
     """
@@ -55,15 +67,18 @@ def test_semantic_search(api_url, query, size=5):
         print(f"Error making request: {str(e)}")
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python test_semantic_api.py <api_url> <query> [size]")
-        print("Example: python test_semantic_api.py https://abc123.execute-api.us-east-1.amazonaws.com/prod/search 'What is the meaning of life?' 5")
-        sys.exit(1)
-    
-    api_url = sys.argv[1]
-    query = sys.argv[2]
-    size = int(sys.argv[3]) if len(sys.argv) > 3 else 5
-    
+    if len(sys.argv) < 2:
+        api_url = get_api_url()
+        if not api_url:
+            print("Usage: python test_semantic_api.py <api_url> <query> [size]")
+            sys.exit(1)
+        query = input("Enter your query: ")
+        size = 5
+    else:
+        api_url = sys.argv[1]
+        query = sys.argv[2] if len(sys.argv) > 2 else input("Enter your query: ")
+        size = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+
     test_semantic_search(api_url, query, size)
 
 if __name__ == "__main__":
