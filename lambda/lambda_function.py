@@ -71,13 +71,13 @@ def search_opensearch(query_embedding, size=5):
             "size": size,
             "query": {
                 "knn": {
-                    "embedding": {
+                    "text_vector": {
                         "vector": query_embedding,
                         "k": size
                     }
                 }
             },
-            "_source": ["title", "author", "content", "book_id", "chapter"]
+            "_source": ["book_title", "author", "text", "chunk_index"]
         }
         
         response = client.search(
@@ -132,11 +132,11 @@ def lambda_handler(event, context):
             source = hit['_source']
             formatted_results.append({
                 'score': hit['_score'],
-                'title': source.get('title', 'Unknown'),
+                'title': source.get('book_title', 'Unknown'),
                 'author': source.get('author', 'Unknown'),
-                'book_id': source.get('book_id', 'Unknown'),
-                'chapter': source.get('chapter', 'Unknown'),
-                'content': source.get('content', '')[:500] + '...' if len(source.get('content', '')) > 500 else source.get('content', '')
+                'book_id': source.get('book_title', 'Unknown'),
+                'chapter': source.get('chunk_index', 'Unknown'),
+                'content': source.get('text', '')[:500] + '...' if len(source.get('text', '')) > 500 else source.get('text', '')
             })
         
         return {
