@@ -3,20 +3,20 @@
 # Script to load embeddings into OpenSearch
 
 # Get the bucket name from Terraform output
-BUCKET_NAME=$(cd terraform && terraform output -raw bucket_name 2>/dev/null)
+BUCKET_NAME=$(cd infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)
 
 if [ -z "$BUCKET_NAME" ]; then
     echo "Error: Could not get bucket name from Terraform output."
-    echo "Please run 'terraform apply' first to create the bucket."
+    echo "Please run 'make deploy' first to create the bucket."
     exit 1
 fi
 
 # Get the OpenSearch endpoint from Terraform output
-OPENSEARCH_ENDPOINT=$(cd terraform && terraform output -raw opensearch_domain_endpoint 2>/dev/null)
+OPENSEARCH_ENDPOINT=$(cd infrastructure/terraform/environments/dev && terraform output -raw opensearch_endpoint 2>/dev/null)
 
 if [ -z "$OPENSEARCH_ENDPOINT" ]; then
     echo "Error: Could not get OpenSearch endpoint from Terraform output."
-    echo "Please run 'terraform apply' first to create the OpenSearch domain."
+    echo "Please run 'make deploy' first to create the OpenSearch domain."
     exit 1
 fi
 
@@ -24,8 +24,8 @@ echo "Found S3 bucket: $BUCKET_NAME"
 echo "Found OpenSearch endpoint: $OPENSEARCH_ENDPOINT"
 
 # Check if Python script exists
-if [ ! -f "scripts/load_embeddings_to_opensearch.py" ]; then
-    echo "Error: scripts/load_embeddings_to_opensearch.py not found"
+if [ ! -f "src/scripts/load_embeddings_to_opensearch.py" ]; then
+    echo "Error: src/scripts/load_embeddings_to_opensearch.py not found"
     exit 1
 fi
 
@@ -48,7 +48,7 @@ echo "You can check the status in the AWS console."
 
 # Run the loading script
 echo "Starting embedding load to OpenSearch..."
-python scripts/load_embeddings_to_opensearch.py \
+python src/scripts/load_embeddings_to_opensearch.py \
     --bucket "$BUCKET_NAME" \
     --opensearch-endpoint "https://$OPENSEARCH_ENDPOINT" \
     --profile "caylent-dev-test" \
@@ -60,4 +60,4 @@ echo "You can now access OpenSearch Dashboard at:"
 echo "https://$OPENSEARCH_ENDPOINT/_dashboards/"
 echo ""
 echo "Or use the URL from Terraform output:"
-cd terraform && terraform output opensearch_dashboard_url 
+cd infrastructure/terraform/environments/dev && terraform output opensearch_dashboard_url 

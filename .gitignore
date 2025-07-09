@@ -3,7 +3,7 @@
 **/venv/*
 
 # Ignore lambda function zip file
-**/terraform/lambda_function.zip
+**/infrastructure/terraform/lambda_function.zip
 
 # .tfstate files
 *.tfstate
@@ -19,6 +19,9 @@ crash.*.log
 # to change depending on the environment.
 *.tfvars
 *.tfvars.json
+
+# But allow example files
+!config/*.tfvars.example
 
 # Ignore override files as they are usually used to override resources locally and so
 # are not checked in
@@ -67,4 +70,41 @@ Thumbs.db
 
 # AWS credentials (if stored locally)
 .aws/
-credentials 
+credentials
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+.env.*.local 

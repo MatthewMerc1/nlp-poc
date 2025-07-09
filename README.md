@@ -6,35 +6,78 @@ This project demonstrates a complete NLP pipeline for vector search using Projec
 
 ```
 nlp-poc/
-├── terraform/           # Infrastructure as Code
-│   ├── main.tf         # Main Terraform configuration
-│   ├── variables.tf    # Variable definitions
-│   ├── outputs.tf      # Output values
-│   ├── iam.tf          # IAM policies
-│   ├── opensearch.tf   # OpenSearch domain
-│   ├── terraform.tfvars # Variable values
-│   └── terraform.tfvars.example # Example variables
-├── scripts/            # Python scripts and shell scripts
-│   ├── upload_gutenberg.py      # Download books from Project Gutenberg
-│   ├── generate_embeddings.py   # Generate embeddings using Bedrock
-│   ├── check_embeddings.py      # Check generated embeddings
-│   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch
-│   ├── upload_books.sh          # Shell script to upload books
-│   ├── generate_embeddings.sh   # Shell script to generate embeddings
-│   ├── load_to_opensearch.sh    # Shell script to load to OpenSearch
-│   ├── package_lambda.sh        # Package Lambda function
-│   └── test_semantic_api.py     # Test semantic search API
-├── lambda/             # Lambda function code
-│   ├── lambda_function.py       # Main Lambda function
-│   └── requirements.txt         # Lambda dependencies
-├── requirements.txt    # Python dependencies
-├── .gitignore         # Git ignore rules
-└── README.md          # This file
+├── src/                    # Source code
+│   ├── lambda/            # Lambda function
+│   │   ├── lambda_function.py
+│   │   └── requirements.txt
+│   ├── scripts/           # Core Python scripts
+│   │   ├── upload_gutenberg.py      # Download books from Project Gutenberg
+│   │   ├── generate_embeddings.py   # Generate embeddings using Bedrock
+│   │   ├── check_embeddings.py      # Check generated embeddings
+│   │   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch
+│   │   ├── upload_books.sh          # Shell script to upload books
+│   │   ├── generate_embeddings.sh   # Shell script to generate embeddings
+│   │   └── load_to_opensearch.sh    # Shell script to load to OpenSearch
+│   └── api/               # API-related code (future)
+├── infrastructure/        # Infrastructure as Code
+│   ├── terraform/         # Terraform configurations
+│   │   ├── main.tf        # Main Terraform configuration
+│   │   ├── variables.tf   # Variable definitions
+│   │   ├── outputs.tf     # Output values
+│   │   ├── iam.tf         # IAM policies
+│   │   ├── opensearch.tf  # OpenSearch domain
+│   │   ├── s3.tf          # S3 bucket configuration
+│   │   ├── monitoring.tf  # CloudWatch monitoring
+│   │   ├── api_gateway.tf # API Gateway configuration
+│   │   ├── terraform.tfvars # Variable values
+│   │   └── .terraform/    # Generated files (gitignored)
+│   └── scripts/           # Infrastructure scripts
+│       ├── package_lambda.sh # Package Lambda function
+│       └── teardown.sh       # Cleanup infrastructure
+├── scripts/               # Orchestration scripts
+│   ├── setup.sh           # Initial project setup
+│   └── pipeline.sh        # Complete data pipeline
+├── tests/                 # Test files
+│   ├── unit/              # Unit tests
+│   ├── integration/       # Integration tests
+│   └── api/               # API tests
+│       └── test_semantic_api.py
+├── docs/                  # Documentation
+│   ├── api/               # API documentation
+│   ├── deployment/        # Deployment guides
+│   └── architecture/      # Architecture diagrams
+├── config/                # Configuration files
+│   └── terraform.tfvars.example # Example Terraform variables
+├── requirements.txt       # Python dependencies
+├── Makefile              # Build and deployment commands
+├── .gitignore            # Git ignore rules
+└── README.md             # This file
 ```
 
 ## 🚀 Quick Start
 
-### 1. Deploy Infrastructure
+### Option 1: Using Makefile (Recommended)
+
+```bash
+# Set up development environment
+make setup
+
+# Deploy infrastructure
+make deploy
+
+# Run complete data pipeline
+make pipeline
+
+# Test the API
+make test
+
+# Check project status
+make status
+```
+
+### Option 2: Manual Steps
+
+#### 1. Deploy Infrastructure
 
 ```bash
 cd terraform
@@ -45,60 +88,66 @@ terraform apply
 
 **Note:** OpenSearch domain creation takes 10-15 minutes.
 
-### 2. Upload Books from Project Gutenberg
+#### 2. Upload Books from Project Gutenberg
 
 ```bash
-cd scripts
-./upload_books.sh
+./src/scripts/upload_books.sh
 ```
 
-### 3. Generate Embeddings
+#### 3. Generate Embeddings
 
 ```bash
-cd scripts
-./generate_embeddings.sh
+./src/scripts/generate_embeddings.sh
 ```
 
-### 4. Load Embeddings into OpenSearch
+#### 4. Load Embeddings into OpenSearch
 
 ```bash
-cd scripts
-./load_to_opensearch.sh
+./src/scripts/load_to_opensearch.sh
 ```
 
-### 5. Load Embeddings into OpenSearch
-
-```bash
-cd scripts
-./load_to_opensearch.sh
-```
-
-### 6. Deploy API Gateway and Lambda
+#### 5. Package and Deploy Lambda
 
 ```bash
 # Package Lambda function
-./scripts/package_lambda.sh
+./infrastructure/scripts/package_lambda.sh
 
 # Deploy infrastructure
-cd terraform
+cd infrastructure/terraform
 terraform apply
 ```
 
-### 7. Test Semantic Search API
+#### 6. Test Semantic Search API
 
 ```bash
 # Test the API (automatically gets URL and API key from Terraform)
-python scripts/test_semantic_api.py "What is the meaning of life?"
+python tests/api/test_semantic_api.py "What is the meaning of life?"
 
 # Or with custom size
-python scripts/test_semantic_api.py "What is the meaning of life?" 10
+python tests/api/test_semantic_api.py "What is the meaning of life?" 10
 ```
 
-### 8. Access OpenSearch Dashboard
+### 7. Access OpenSearch Dashboard
 
 ```bash
-cd terraform
+cd infrastructure/terraform
 terraform output opensearch_dashboard_url
+```
+
+## 🛠️ Available Commands
+
+The project includes a Makefile with convenient commands:
+
+```bash
+make help      # Show all available commands
+make setup     # Set up development environment
+make deploy    # Deploy infrastructure
+make pipeline  # Run complete data pipeline
+make test      # Run API tests
+make teardown  # Tear down infrastructure
+make clean     # Clean up generated files
+make package   # Package Lambda function
+make status    # Show project status
 ```
 
 ## 📚 Books Included
@@ -125,7 +174,7 @@ The following books from Project Gutenberg are processed:
 
 ### Terraform Variables
 
-Key variables in `terraform/terraform.tfvars`:
+Key variables in `infrastructure/terraform/terraform.tfvars`:
 
 - `bucket_name`: S3 bucket name
 - `opensearch_domain_name`: OpenSearch domain name
