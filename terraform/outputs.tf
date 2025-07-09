@@ -32,4 +32,25 @@ output "opensearch_domain_arn" {
 output "opensearch_dashboard_url" {
   description = "OpenSearch Dashboard URL"
   value       = "https://${aws_opensearch_domain.embeddings_domain.endpoint}/_dashboards/"
+}
+
+# API Gateway outputs
+output "api_key" {
+  description = "API key for accessing the semantic search API"
+  value       = aws_api_gateway_api_key.semantic_api_key.value
+  sensitive   = true
+}
+
+# Monitoring outputs
+output "sns_topic_arn" {
+  description = "ARN of the SNS topic for alerts"
+  value       = aws_sns_topic.alerts.arn
+}
+
+output "cloudwatch_log_groups" {
+  description = "CloudWatch log groups created"
+  value = {
+    api_gateway = aws_cloudwatch_log_group.api_gateway_logs.name
+    lambda      = aws_cloudwatch_log_group.lambda_logs.name
+  }
 } 

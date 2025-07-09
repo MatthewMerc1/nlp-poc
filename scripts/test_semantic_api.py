@@ -19,12 +19,24 @@ def get_api_url():
         print("Could not get API Gateway URL from Terraform:", e)
         return None
 
-def test_semantic_search(api_url, query, size=5):
+def get_api_key():
+    try:
+        api_key = subprocess.check_output(
+            ["terraform", "output", "-raw", "api_key"],
+            cwd="terraform"
+        ).decode("utf-8").strip()
+        return api_key
+    except Exception as e:
+        print("Could not get API key from Terraform:", e)
+        return None
+
+def test_semantic_search(api_url, api_key, query, size=5):
     """
     Test the semantic search API
     
     Args:
         api_url (str): The API Gateway URL
+        api_key (str): The API key for authentication
         query (str): The search query
         size (int): Number of results to return
     """
@@ -35,12 +47,14 @@ def test_semantic_search(api_url, query, size=5):
     }
     
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-api-key": api_key
     }
     
     try:
         print(f"Searching for: '{query}'")
         print(f"API URL: {api_url}")
+        print(f"API Key: {api_key[:8]}...{api_key[-4:]}")  # Show first 8 and last 4 chars
         print("-" * 50)
         
         response = requests.post(api_url, json=payload, headers=headers)
@@ -59,6 +73,12 @@ def test_semantic_search(api_url, query, size=5):
                 print(f"   Chapter: {result['chapter']}")
                 print(f"   Content: {result['content'][:200]}...")
                 
+        elif response.status_code == 403:
+            print("Error: 403 Forbidden - Check your API key")
+            print(f"Response: {response.text}")
+        elif response.status_code == 429:
+            print("Error: 429 Too Many Requests - Rate limit exceeded")
+            print(f"Response: {response.text}")
         else:
             print(f"Error: {response.status_code}")
             print(f"Response: {response.text}")
@@ -67,19 +87,23 @@ def test_semantic_search(api_url, query, size=5):
         print(f"Error making request: {str(e)}")
 
 def main():
+    # Get API URL and key from Terraform
+    api_url = get_api_url()
+    api_key = get_api_key()
+    
+    if not api_url or not api_key:
+        print("Could not get API URL or API key from Terraform")
+        print("Make sure you're in the correct directory and Terraform is deployed")
+        sys.exit(1)
+    
     if len(sys.argv) < 2:
-        api_url = get_api_url()
-        if not api_url:
-            print("Usage: python test_semantic_api.py <api_url> <query> [size]")
-            sys.exit(1)
         query = input("Enter your query: ")
         size = 5
     else:
-        api_url = sys.argv[1]
-        query = sys.argv[2] if len(sys.argv) > 2 else input("Enter your query: ")
-        size = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+        query = sys.argv[1]
+        size = int(sys.argv[2]) if len(sys.argv) > 2 else 5
 
-    test_semantic_search(api_url, query, size)
+    test_semantic_search(api_url, api_key, query, size)
 
 if __name__ == "__main__":
     main() 

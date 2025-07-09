@@ -21,7 +21,7 @@ resource "aws_opensearch_domain" "embeddings_domain" {
     security_group_ids = [aws_security_group.opensearch_sg.id]
   }
 
-  # Access policy - no IP restrictions when using VPC endpoint
+  # Access policy - allow all access when using VPC endpoint
   access_policies = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -52,6 +52,17 @@ resource "aws_opensearch_domain" "embeddings_domain" {
   domain_endpoint_options {
     enforce_https       = true
     tls_security_policy = "Policy-Min-TLS-1-2-2019-07"
+  }
+
+  # Fine-grained access control
+  advanced_security_options {
+    enabled                        = true
+    internal_user_database_enabled = true
+    
+    master_user_options {
+      master_user_name = var.opensearch_master_user
+      master_user_password = var.opensearch_master_password
+    }
   }
 
   tags = merge(var.shared_tags, var.opensearch_domain_tags)
@@ -142,20 +153,28 @@ resource "aws_security_group" "opensearch_sg" {
   description = "Security group for OpenSearch domain"
   vpc_id      = aws_vpc.opensearch_vpc.id
 
-  # HTTPS access
+  # HTTPS access - restrict to VPC and allowed IPs
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = concat(
+      [aws_subnet.opensearch_subnet.cidr_block],
+      var.allowed_ipv4_addresses
+    )
+    ipv6_cidr_blocks = var.allowed_ipv6_addresses
   }
 
-  # HTTP access (for development)
+  # HTTP access (for development) - restrict to VPC and allowed IPs
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = concat(
+      [aws_subnet.opensearch_subnet.cidr_block],
+      var.allowed_ipv4_addresses
+    )
+    ipv6_cidr_blocks = var.allowed_ipv6_addresses
   }
 
   # All outbound traffic

@@ -87,12 +87,11 @@ terraform apply
 ### 7. Test Semantic Search API
 
 ```bash
-# Get the API URL
-cd terraform
-terraform output api_gateway_url
+# Test the API (automatically gets URL and API key from Terraform)
+python scripts/test_semantic_api.py "What is the meaning of life?"
 
-# Test the API
-python scripts/test_semantic_api.py "https://your-api-url" "What is the meaning of life?"
+# Or with custom size
+python scripts/test_semantic_api.py "What is the meaning of life?" 10
 ```
 
 ### 8. Access OpenSearch Dashboard
@@ -195,13 +194,14 @@ Key variables in `terraform/terraform.tfvars`:
 ### Example Usage
 
 ```bash
-# Using curl
+# Using curl (replace YOUR_API_KEY with actual key from terraform output api_key)
 curl -X POST "https://your-api-gateway-url/prod/search" \
   -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
   -d '{"query": "What is the meaning of life?", "size": 5}'
 
-# Using Python
-python scripts/test_semantic_api.py "https://your-api-gateway-url/prod/search" "What is the meaning of life?"
+# Using Python (automatically gets API key)
+python scripts/test_semantic_api.py "What is the meaning of life?"
 ```
 
 ## 💰 Cost Estimation
@@ -248,9 +248,91 @@ python scripts/load_embeddings_to_opensearch.py \
 
 - OpenSearch access is currently open for development
 - Restrict IP access in production
-- Use IAM roles instead of profiles in production
-- Enable VPC endpoints for better security
 
-## 📝 License
+## 🔒 Security Best Practices
 
-This project is for educational and development purposes. 
+This project implements several security best practices:
+
+### S3 Security
+- **Server-side encryption** enabled with AES256
+- **Public access blocked** completely
+- **Bucket policy** enforces encryption for uploads
+- **Versioning enabled** for data protection
+- **Lifecycle policies** for cost optimization
+
+### OpenSearch Security
+- **Fine-grained access control** enabled
+- **IP restrictions** via security groups and access policies
+- **Encryption at rest** and in transit
+- **VPC isolation** for network security
+
+### API Gateway Security
+- **API key authentication** required
+- **Usage plans** with rate limiting (10 req/sec, 1000/day)
+- **CloudWatch logging** for audit trails
+- **CORS configuration** for web access
+
+### Lambda Security
+- **VPC isolation** for network security
+- **IAM least privilege** principles
+- **Environment variable encryption** (consider using AWS Secrets Manager for production)
+- **Reserved concurrency** to prevent resource exhaustion
+
+## 📊 Monitoring & Observability
+
+### CloudWatch Alarms
+The following alarms are configured:
+- **Lambda Errors**: Alerts when error rate exceeds 5 errors per 5 minutes
+- **Lambda Duration**: Alerts when execution time exceeds 25 seconds
+- **API Gateway 4XX Errors**: Alerts when client errors exceed 10 per 5 minutes
+- **API Gateway 5XX Errors**: Alerts when server errors exceed 5 per 5 minutes
+- **OpenSearch Health**: Alerts when cluster status is not green
+
+### Logging
+- **API Gateway logs** with detailed request/response information
+- **Lambda logs** with structured logging
+- **OpenSearch logs** for cluster monitoring
+
+### Alerting
+- **SNS topic** for centralized alerting
+- **Email subscriptions** for immediate notification
+- **Configurable thresholds** for different environments
+
+## 🚀 Performance Optimizations
+
+### Lambda Performance
+- **Increased memory** to 1024MB for better CPU allocation
+- **Reserved concurrency** to prevent throttling
+- **VPC configuration** for low-latency OpenSearch access
+
+### S3 Lifecycle Management
+- **Automatic transitions** to cost-effective storage classes
+- **Data retention policies** to manage storage costs
+- **Incomplete multipart cleanup** to prevent orphaned uploads
+
+## 🔄 Backup & Disaster Recovery
+
+### Data Protection
+- **S3 versioning** for point-in-time recovery
+- **Cross-region replication** (consider for production)
+- **Automated backups** via lifecycle policies
+
+### Recovery Procedures
+1. **Infrastructure recovery**: Use Terraform to recreate resources
+2. **Data recovery**: Restore from S3 versions or cross-region copies
+3. **Application recovery**: Redeploy Lambda functions and API Gateway
+
+## 📋 Deployment Checklist
+
+Before deploying to production:
+
+- [ ] Update `allowed_ip_addresses` with production IP ranges
+- [ ] Change default passwords in `terraform.tfvars`
+- [ ] Configure alert email addresses
+- [ ] Review and adjust rate limits
+- [ ] Set up cross-region replication for S3
+- [ ] Configure backup retention policies
+- [ ] Test disaster recovery procedures
+- [ ] Review IAM permissions for least privilege
+- [ ] Set up monitoring dashboards
+- [ ] Document runbooks for common issues 

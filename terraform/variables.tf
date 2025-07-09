@@ -22,8 +22,6 @@ variable "bucket_force_destroy" {
   default     = true
 }
 
-
-
 variable "enable_versioning" {
   description = "Whether to enable versioning on the S3 bucket"
   type        = bool
@@ -53,6 +51,40 @@ variable "opensearch_volume_size" {
   description = "EBS volume size for OpenSearch nodes (GB)"
   type        = number
   default     = 10
+}
+
+variable "allowed_ip_addresses" {
+  description = "List of IP addresses allowed to access OpenSearch"
+  type        = list(string)
+  default     = []
+}
+
+variable "allowed_ipv4_addresses" {
+  description = "List of IPv4 addresses allowed to access OpenSearch"
+  type        = list(string)
+  default     = []
+}
+
+variable "allowed_ipv6_addresses" {
+  description = "List of IPv6 addresses allowed to access OpenSearch"
+  type        = list(string)
+}
+
+variable "opensearch_master_user" {
+  description = "Master user for OpenSearch fine-grained access control"
+  type        = string
+}
+
+variable "opensearch_master_password" {
+  description = "Master password for OpenSearch fine-grained access control"
+  type        = string
+  sensitive   = true
+}
+
+variable "alert_email_addresses" {
+  description = "List of email addresses to receive CloudWatch alarms"
+  type        = list(string)
+  default     = []
 }
 
 # Shared tags for all resources

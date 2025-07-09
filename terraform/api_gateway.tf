@@ -23,6 +23,7 @@ resource "aws_api_gateway_method" "semantic_method" {
   resource_id   = aws_api_gateway_resource.semantic_resource.id
   http_method   = "POST"
   authorization = "NONE"
+  api_key_required = true
 }
 
 # API Gateway Integration
@@ -33,6 +34,52 @@ resource "aws_api_gateway_integration" "semantic_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.semantic_lambda.invoke_arn
+}
+
+# API Key
+resource "aws_api_gateway_api_key" "semantic_api_key" {
+  name = "nlp-poc-semantic-api-key"
+  description = "API key for semantic search API"
+  
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-semantic-api-key"
+    Purpose      = "api-authentication"
+    ResourceType = "api-key"
+  })
+}
+
+# Usage Plan
+resource "aws_api_gateway_usage_plan" "semantic_usage_plan" {
+  name         = "nlp-poc-semantic-usage-plan"
+  description  = "Usage plan for semantic search API"
+
+  api_stages {
+    api_id = aws_api_gateway_rest_api.semantic_api.id
+    stage  = aws_api_gateway_stage.semantic_stage.stage_name
+  }
+
+  quota_settings {
+    limit  = 1000
+    period = "DAY"
+  }
+
+  throttle_settings {
+    rate_limit  = 10
+    burst_limit = 20
+  }
+
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-semantic-usage-plan"
+    Purpose      = "api-rate-limiting"
+    ResourceType = "usage-plan"
+  })
+}
+
+# Associate API Key with Usage Plan
+resource "aws_api_gateway_usage_plan_key" "semantic_usage_plan_key" {
+  key_id        = aws_api_gateway_api_key.semantic_api_key.id
+  key_type      = "API_KEY"
+  usage_plan_id = aws_api_gateway_usage_plan.semantic_usage_plan.id
 }
 
 # Lambda Permission for API Gateway
@@ -61,6 +108,57 @@ resource "aws_api_gateway_stage" "semantic_stage" {
   stage_name    = "dev"
   rest_api_id   = aws_api_gateway_rest_api.semantic_api.id
   deployment_id = aws_api_gateway_deployment.semantic_deployment.id
+
+  # Enable CloudWatch logging
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      caller         = "$context.identity.userAgent"
+      user           = "$context.identity.user"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+      integrationLatency = "$context.integrationLatency"
+      responseLatency    = "$context.responseLatency"
+    })
+  }
+
+  # Enable detailed CloudWatch metrics
+  xray_tracing_enabled = true
+}
+
+# CloudWatch Log Group for API Gateway
+resource "aws_cloudwatch_log_group" "api_gateway_logs" {
+  name              = "/aws/apigateway/nlp-poc-semantic-api"
+  retention_in_days = 7
+
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-api-gateway-logs"
+    Purpose      = "api-monitoring"
+    ResourceType = "log-group"
+  })
+}
+
+# CloudWatch Log Group for Lambda
+resource "aws_cloudwatch_log_group" "lambda_logs" {
+  name              = "/aws/lambda/${aws_lambda_function.semantic_lambda.function_name}"
+  retention_in_days = 7
+
+  tags = merge(var.shared_tags, {
+    Name         = "nlp-poc-lambda-logs"
+    Purpose      = "lambda-monitoring"
+    ResourceType = "log-group"
+  })
+
+  # Import existing log group if it exists
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Lambda Function
@@ -71,7 +169,7 @@ resource "aws_lambda_function" "semantic_lambda" {
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.11"
   timeout       = 30
-  memory_size   = 512
+  memory_size   = 1024
 
   vpc_config {
     subnet_ids         = [aws_subnet.opensearch_subnet.id]
@@ -83,8 +181,12 @@ resource "aws_lambda_function" "semantic_lambda" {
       OPENSEARCH_ENDPOINT = aws_opensearch_domain.embeddings_domain.endpoint
       OPENSEARCH_INDEX    = "book-embeddings"
       BEDROCK_MODEL_ID    = "amazon.titan-embed-text-v1"
+      LOG_LEVEL           = "INFO"
     }
   }
+
+  # Reserved concurrency to prevent throttling
+  reserved_concurrent_executions = 10
 
   tags = merge(var.shared_tags, {
     Name         = "nlp-poc-semantic-lambda"
