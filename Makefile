@@ -1,4 +1,4 @@
-.PHONY: help setup deploy pipeline test teardown clean
+.PHONY: help setup deploy deploy-full package deploy-lambda pipeline test teardown clean
 
 # Default target
 help:
@@ -7,6 +7,7 @@ help:
 	@echo "  deploy     - Deploy infrastructure (without Lambda)"
 	@echo "  deploy-full- Deploy complete infrastructure with Lambda"
 	@echo "  package    - Package Lambda function"
+	@echo "  deploy-lambda - Package and deploy Lambda function to AWS"
 	@echo "  pipeline   - Run the complete data pipeline"
 	@echo "  load-embeddings - Load embeddings to OpenSearch via Lambda"
 	@echo "  test       - Run API tests"
@@ -63,6 +64,17 @@ clean:
 package:
 	@echo "Packaging Lambda function..."
 	@./infrastructure/scripts/package_lambda.sh
+
+# Package and deploy Lambda function to AWS
+deploy-lambda:
+	@echo "Packaging and deploying Lambda function to AWS..."
+	@make package
+	@echo "Deploying to AWS Lambda..."
+	@aws lambda update-function-code \
+		--function-name nlp-poc-semantic-search \
+		--zip-file fileb://infrastructure/terraform/environments/dev/lambda_function.zip \
+		--profile caylent-dev-test
+	@echo "Lambda function deployed successfully!"
 
 # Show project status
 status:

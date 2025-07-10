@@ -33,6 +33,6 @@ pip install -r requirements.txt
 
 # Run the upload script
 echo "Starting book upload..."
-python src/scripts/upload_gutenberg.py --bucket "$BUCKET_NAME" --profile "caylent-dev-test" --limit 10
+python src/scripts/upload_gutenberg.py --bucket "$BUCKET_NAME" --profile "caylent-dev-test" --limit 2
 
 echo "Upload complete!" 
