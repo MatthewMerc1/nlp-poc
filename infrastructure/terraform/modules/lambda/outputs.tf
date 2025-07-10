@@ -2,17 +2,17 @@
 
 output "function_name" {
   description = "Name of the Lambda function"
-  value       = aws_lambda_function.main.function_name
+  value       = length(aws_lambda_function.main) > 0 ? aws_lambda_function.main[0].function_name : ""
 }
 
 output "function_arn" {
   description = "ARN of the Lambda function"
-  value       = aws_lambda_function.main.arn
+  value       = length(aws_lambda_function.main) > 0 ? aws_lambda_function.main[0].arn : ""
 }
 
 output "function_invoke_arn" {
   description = "Invocation ARN of the Lambda function"
-  value       = aws_lambda_function.main.invoke_arn
+  value       = length(aws_lambda_function.main) > 0 ? aws_lambda_function.main[0].invoke_arn : ""
 }
 
 output "role_arn" {

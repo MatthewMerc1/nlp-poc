@@ -164,6 +164,9 @@ resource "aws_lambda_function" "main" {
   timeout         = var.timeout
   memory_size     = var.memory_size
 
+  # Only create if ZIP file exists and function doesn't already exist
+  count = fileexists(var.lambda_zip_path) && var.create_lambda_function ? 1 : 0
+
   dynamic "vpc_config" {
     for_each = var.vpc_config != null ? [var.vpc_config] : []
     content {
@@ -181,7 +184,9 @@ resource "aws_lambda_function" "main" {
 
 # CloudWatch Log Group for Lambda
 resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${aws_lambda_function.main.function_name}"
+  count = fileexists(var.lambda_zip_path) && var.create_lambda_function ? 1 : 0
+  
+  name              = "/aws/lambda/${aws_lambda_function.main[0].function_name}"
   retention_in_days = var.log_retention_days
 
   tags = var.tags
@@ -189,9 +194,11 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
 
 # Lambda Permission for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
+  count = fileexists(var.lambda_zip_path) && var.create_lambda_function ? 1 : 0
+  
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.main.function_name
+  function_name = aws_lambda_function.main[0].function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${var.api_gateway_execution_arn}/*/*"
 } 

@@ -12,7 +12,7 @@ def get_api_url():
     try:
         url = subprocess.check_output(
             ["terraform", "output", "-raw", "api_gateway_url"],
-            cwd="terraform"
+            cwd="infrastructure/terraform/environments/dev"
         ).decode("utf-8").strip()
         return url
     except Exception as e:
@@ -23,7 +23,7 @@ def get_api_key():
     try:
         api_key = subprocess.check_output(
             ["terraform", "output", "-raw", "api_key"],
-            cwd="terraform"
+            cwd="infrastructure/terraform/environments/dev"
         ).decode("utf-8").strip()
         return api_key
     except Exception as e:

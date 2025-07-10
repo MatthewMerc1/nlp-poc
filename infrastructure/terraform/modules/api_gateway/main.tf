@@ -79,12 +79,25 @@ resource "aws_api_gateway_usage_plan_key" "main" {
   usage_plan_id = aws_api_gateway_usage_plan.main[0].id
 }
 
+# Data source to check if log group exists
+data "aws_cloudwatch_log_group" "existing_api_gateway" {
+  count = var.create_log_group ? 0 : 1
+  name  = "/aws/apigateway/${var.api_name}"
+}
+
 # CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_gateway" {
+  count = var.create_log_group ? 1 : 0
+  
   name              = "/aws/apigateway/${var.api_name}"
   retention_in_days = var.log_retention_days
 
   tags = var.tags
+}
+
+# Local value to get the log group ARN (either from resource or data source)
+locals {
+  api_gateway_log_group_arn = var.create_log_group ? aws_cloudwatch_log_group.api_gateway[0].arn : data.aws_cloudwatch_log_group.existing_api_gateway[0].arn
 }
 
 # API Gateway Deployment
@@ -92,9 +105,7 @@ resource "aws_api_gateway_deployment" "main" {
   depends_on = [
     aws_api_gateway_integration.search,
   ]
-
   rest_api_id = aws_api_gateway_rest_api.main.id
-
   lifecycle {
     create_before_destroy = true
   }
@@ -108,7 +119,7 @@ resource "aws_api_gateway_stage" "main" {
 
   # Enable CloudWatch logging
   access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+    destination_arn = local.api_gateway_log_group_arn
     format = jsonencode({
       requestId           = "$context.requestId"
       ip                  = "$context.identity.sourceIp"

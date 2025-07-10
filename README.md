@@ -14,10 +14,11 @@ nlp-poc/
 │   │   ├── upload_gutenberg.py      # Download books from Project Gutenberg
 │   │   ├── generate_embeddings.py   # Generate embeddings using Bedrock
 │   │   ├── check_embeddings.py      # Check generated embeddings
-│   │   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch
+│   │   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch (legacy)
+│   │   ├── load_embeddings_via_lambda.py    # Load embeddings via Lambda (recommended)
 │   │   ├── upload_books.sh          # Shell script to upload books
 │   │   ├── generate_embeddings.sh   # Shell script to generate embeddings
-│   │   └── load_to_opensearch.sh    # Shell script to load to OpenSearch
+│   │   └── load_to_opensearch.sh    # Shell script to load to OpenSearch (updated)
 │   └── api/               # API-related code (future)
 ├── infrastructure/        # Infrastructure as Code
 │   ├── terraform/         # Terraform configurations
@@ -102,8 +103,23 @@ terraform apply
 
 #### 4. Load Embeddings into OpenSearch
 
+**Option A: Lambda-based approach (Recommended)**
 ```bash
+# Uses Lambda function to load embeddings (avoids connectivity issues)
 ./src/scripts/load_to_opensearch.sh
+
+# Or use the Makefile command
+make load-embeddings
+```
+
+**Option B: Direct approach (Legacy)**
+```bash
+# Direct OpenSearch connection (may have connectivity issues)
+python src/scripts/load_embeddings_to_opensearch.py \
+    --bucket "$BUCKET_NAME" \
+    --opensearch-endpoint "https://$OPENSEARCH_ENDPOINT" \
+    --profile "caylent-dev-test" \
+    --index "book-embeddings"
 ```
 
 #### 5. Package and Deploy Lambda
@@ -143,6 +159,7 @@ make help      # Show all available commands
 make setup     # Set up development environment
 make deploy    # Deploy infrastructure
 make pipeline  # Run complete data pipeline
+make load-embeddings # Load embeddings to OpenSearch via Lambda
 make test      # Run API tests
 make teardown  # Tear down infrastructure
 make clean     # Clean up generated files
@@ -198,6 +215,39 @@ Key variables in `infrastructure/terraform/terraform.tfvars`:
 - `chunk_index`: Integer for ordering
 - `text`: Original text content
 - `text_vector`: 1536-dimensional embedding vector
+
+## 🔄 Lambda-Based Embedding Loading
+
+The project now uses a **Lambda-based approach** for loading embeddings into OpenSearch, which provides several advantages:
+
+### Why Lambda-Based Loading?
+
+1. **No Connectivity Issues**: Lambda function is already in the VPC and can access OpenSearch
+2. **More Secure**: No need to expose OpenSearch to the internet
+3. **Reliable**: Avoids network timeouts and connection issues
+4. **Scalable**: Can handle large datasets efficiently
+
+### How It Works
+
+1. **Lambda Function Enhancement**: The Lambda function now includes a `load_embeddings` action
+2. **S3 Integration**: Reads embedding files from S3 bucket
+3. **Bulk Indexing**: Uses OpenSearch bulk API for efficient loading
+4. **Error Handling**: Comprehensive error handling and logging
+
+### Usage
+
+```bash
+# Load all embeddings using the updated script
+./src/scripts/load_to_opensearch.sh
+
+# Or use the dedicated Makefile command
+make load-embeddings
+
+# Or run the Python script directly
+python src/scripts/load_embeddings_via_lambda.py \
+    --bucket "your-bucket-name" \
+    --profile "your-aws-profile"
+```
 - `model_id`: Embedding model used
 - `uploaded_at`: Timestamp
 

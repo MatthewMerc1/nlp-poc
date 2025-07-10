@@ -171,7 +171,8 @@ class BedrockEmbeddingGenerator:
                 Bucket=self.bucket_name,
                 Key=s3_key,
                 Body=json.dumps(embeddings_data, indent=2),
-                ContentType='application/json'
+                ContentType='application/json',
+                ServerSideEncryption='AES256'
             )
             
             print(f"Uploaded embeddings to s3://{self.bucket_name}/{s3_key}")

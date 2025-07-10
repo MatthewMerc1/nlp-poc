@@ -1,63 +1,66 @@
 #!/bin/bash
 
-# Script to load embeddings into OpenSearch
+# Load embeddings to OpenSearch via Lambda
+# This script uses the Lambda function to load embeddings, avoiding direct OpenSearch connectivity issues
 
-# Get the bucket name from Terraform output
-BUCKET_NAME=$(cd infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)
+set -e
 
-if [ -z "$BUCKET_NAME" ]; then
-    echo "Error: Could not get bucket name from Terraform output."
-    echo "Please run 'make deploy' first to create the bucket."
-    exit 1
-fi
+echo "🔍 Loading embeddings to OpenSearch via Lambda..."
 
-# Get the OpenSearch endpoint from Terraform output
-OPENSEARCH_ENDPOINT=$(cd infrastructure/terraform/environments/dev && terraform output -raw opensearch_endpoint 2>/dev/null)
-
-if [ -z "$OPENSEARCH_ENDPOINT" ]; then
-    echo "Error: Could not get OpenSearch endpoint from Terraform output."
-    echo "Please run 'make deploy' first to create the OpenSearch domain."
-    exit 1
-fi
-
-echo "Found S3 bucket: $BUCKET_NAME"
-echo "Found OpenSearch endpoint: $OPENSEARCH_ENDPOINT"
-
-# Check if Python script exists
-if [ ! -f "src/scripts/load_embeddings_to_opensearch.py" ]; then
-    echo "Error: src/scripts/load_embeddings_to_opensearch.py not found"
-    exit 1
-fi
-
-# Install dependencies if needed
+# Check if virtual environment exists
 if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv
+    echo "❌ Error: Virtual environment not found. Run './scripts/setup.sh' first."
+    exit 1
 fi
 
-echo "Activating virtual environment..."
+# Activate virtual environment
 source venv/bin/activate
 
-echo "Installing dependencies..."
-pip install -r requirements.txt
+# Check if infrastructure is deployed
+if [ ! -f "infrastructure/terraform/environments/dev/terraform.tfstate" ]; then
+    echo "❌ Error: Infrastructure not deployed. Run 'make deploy' first."
+    exit 1
+fi
 
-# Wait for OpenSearch to be ready
-echo "Waiting for OpenSearch domain to be ready..."
-echo "This may take 10-15 minutes for the domain to be fully operational."
-echo "You can check the status in the AWS console."
+# Get bucket name from Terraform output
+BUCKET_NAME=$(cd infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)
+if [ -z "$BUCKET_NAME" ]; then
+    echo "❌ Error: Could not get bucket name from Terraform output."
+    echo "Please run 'make deploy' first to create the infrastructure."
+    exit 1
+fi
 
-# Run the loading script
-echo "Starting embedding load to OpenSearch..."
-python src/scripts/load_embeddings_to_opensearch.py \
-    --bucket "$BUCKET_NAME" \
-    --opensearch-endpoint "https://$OPENSEARCH_ENDPOINT" \
-    --profile "caylent-dev-test" \
-    --index "book-embeddings"
+echo "✅ Found S3 bucket: $BUCKET_NAME"
 
-echo "Load complete!"
+# Get OpenSearch endpoint for reference
+OPENSEARCH_ENDPOINT=$(cd infrastructure/terraform/environments/dev && terraform output -raw opensearch_endpoint 2>/dev/null)
+if [ -n "$OPENSEARCH_ENDPOINT" ]; then
+    echo "✅ Found OpenSearch endpoint: $OPENSEARCH_ENDPOINT"
+fi
+
+echo "============================================================"
+echo "Loading embeddings into OpenSearch via Lambda function..."
+echo "This approach avoids direct connectivity issues by using the Lambda function"
+echo "which is already in the VPC and has access to OpenSearch."
+echo "============================================================"
+
+# Load embeddings using the Lambda-based script
+python src/scripts/load_embeddings_via_lambda.py --bucket "$BUCKET_NAME" --profile caylent-dev-test
+
 echo ""
-echo "You can now access OpenSearch Dashboard at:"
-echo "https://$OPENSEARCH_ENDPOINT/_dashboards/"
-echo ""
-echo "Or use the URL from Terraform output:"
-cd infrastructure/terraform/environments/dev && terraform output opensearch_dashboard_url 
+echo "✅ Load complete!"
+
+# Get OpenSearch dashboard URL
+DASHBOARD_URL=$(cd infrastructure/terraform/environments/dev && terraform output -raw opensearch_dashboard_url 2>/dev/null)
+if [ -n "$DASHBOARD_URL" ]; then
+    echo ""
+    echo "You can now access OpenSearch Dashboard at:"
+    echo "$DASHBOARD_URL"
+    echo ""
+    echo "Or use the URL from Terraform output:"
+    echo "\"$DASHBOARD_URL\""
+else
+    echo ""
+    echo "You can access OpenSearch Dashboard using:"
+    echo "cd infrastructure/terraform/environments/dev && terraform output opensearch_dashboard_url"
+fi 

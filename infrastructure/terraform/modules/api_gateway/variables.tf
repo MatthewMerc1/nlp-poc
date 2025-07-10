@@ -62,4 +62,10 @@ variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
   default     = {}
+}
+
+variable "create_log_group" {
+  description = "Whether to create the CloudWatch log group (set to false if it already exists)"
+  type        = bool
+  default     = true
 } 

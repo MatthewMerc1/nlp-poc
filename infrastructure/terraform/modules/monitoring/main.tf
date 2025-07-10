@@ -22,7 +22,6 @@ data "aws_caller_identity" "current" {}
 # Lambda Error Rate Alarm
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   count = var.enable_lambda_monitoring ? 1 : 0
-
   alarm_name          = "${var.project_name}-lambda-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = var.alarm_evaluation_periods
@@ -33,18 +32,15 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   threshold           = var.lambda_error_threshold
   alarm_description   = "Lambda function error rate is too high"
   alarm_actions       = [aws_sns_topic.alerts.arn]
-
   dimensions = {
     FunctionName = var.lambda_function_name
   }
-
   tags = var.tags
 }
 
 # Lambda Duration Alarm
 resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
   count = var.enable_lambda_monitoring ? 1 : 0
-
   alarm_name          = "${var.project_name}-lambda-duration"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = var.alarm_evaluation_periods
@@ -55,11 +51,9 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
   threshold           = var.lambda_duration_threshold
   alarm_description   = "Lambda function is taking too long to execute"
   alarm_actions       = [aws_sns_topic.alerts.arn]
-
   dimensions = {
     FunctionName = var.lambda_function_name
   }
-
   tags = var.tags
 }
 

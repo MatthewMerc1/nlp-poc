@@ -63,8 +63,11 @@ module "lambda" {
   source = "../../modules/lambda"
 
   function_name = "nlp-poc-semantic-search"
-  lambda_zip_path = "../../lambda_function.zip"
+  lambda_zip_path = "lambda_function.zip"
   aws_region = var.aws_region
+  
+  # Set to true to manage Lambda function with Terraform
+  create_lambda_function = true 
   
   # Resource ARNs
   s3_bucket_arn = module.data_bucket.bucket_arn
@@ -98,9 +101,12 @@ module "api_gateway" {
   api_name = "nlp-poc-semantic-api"
   lambda_invoke_arn = module.lambda.function_invoke_arn
   
+  # Set to false since log group already exists
+  create_log_group = false
+  
   tags = {
     Environment = "dev"
-    Project     = "nlp-poc"
+    Project     = "dev"
   }
 }
 

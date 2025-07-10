@@ -124,7 +124,10 @@ class GutenbergUploader:
                 local_file,
                 self.bucket_name,
                 s3_key,
-                ExtraArgs={'ContentType': 'text/plain'}
+                ExtraArgs={
+                    'ContentType': 'text/plain',
+                    'ServerSideEncryption': 'AES256'
+                }
             )
             
             print(f"Successfully uploaded: s3://{self.bucket_name}/{s3_key}")

@@ -16,7 +16,7 @@ output "execution_arn" {
 }
 
 output "invoke_url" {
-  description = "Invoke URL of the API Gateway"
+  description = "Invoke URL for the API Gateway"
   value       = "${aws_api_gateway_stage.main.invoke_url}/search"
 }
 
