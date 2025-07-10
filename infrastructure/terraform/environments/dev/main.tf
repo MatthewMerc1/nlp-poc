@@ -69,6 +69,10 @@ module "lambda" {
   # Set to true to manage Lambda function with Terraform
   create_lambda_function = true 
   
+  # Increase timeout and memory for better performance
+  timeout = 60
+  memory_size = 512
+  
   # Resource ARNs
   s3_bucket_arn = module.data_bucket.bucket_arn
   opensearch_domain_arn = module.opensearch.domain_arn

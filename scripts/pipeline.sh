@@ -44,8 +44,7 @@ BUCKET_NAME="$BUCKET_NAME" ./src/scripts/generate_book_summaries.sh
 # Step 3: Load book summaries to OpenSearch
 echo ""
 echo "🔍 Step 3: Loading book summaries to OpenSearch..."
-OPENSEARCH_ENDPOINT=$(cd infrastructure/terraform/environments/dev && terraform output -raw opensearch_endpoint 2>/dev/null)
-BUCKET_NAME="$BUCKET_NAME" OPENSEARCH_ENDPOINT="$OPENSEARCH_ENDPOINT" ./src/scripts/load_book_summaries.sh
+BUCKET_NAME="$BUCKET_NAME" ./src/scripts/load_book_summaries.sh
 
 echo ""
 echo "✅ Data pipeline completed successfully!"

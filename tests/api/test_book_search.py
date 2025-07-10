@@ -69,7 +69,12 @@ def test_book_search(api_url, api_key, query, size=5):
                 print(f"\n{i}. 📖 {result['book_title']}")
                 print(f"   👤 Author: {result['author']}")
                 print(f"   ⭐ Score: {result['score']:.4f}")
-                print(f"   📝 Summary: {result['book_summary'][:200]}...")
+                # Debug: print all available keys
+                print(f"   🔍 Available keys: {list(result.keys())}")
+                if 'book_summary' in result:
+                    print(f"   📝 Summary: {result['book_summary'][:200]}...")
+                else:
+                    print(f"   📝 Summary: [No summary available]")
                 print("-" * 50)
                 
         elif response.status_code == 403:

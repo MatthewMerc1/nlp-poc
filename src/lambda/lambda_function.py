@@ -35,7 +35,7 @@ def get_aws_auth():
         raise
 
 def create_opensearch_client():
-    """Create OpenSearch client"""
+    """Create OpenSearch client with proper timeout and retry configuration"""
     try:
         awsauth = get_aws_auth()
         host = os.environ.get('OPENSEARCH_ENDPOINT')
@@ -48,7 +48,11 @@ def create_opensearch_client():
             http_auth=awsauth,
             use_ssl=True,
             verify_certs=True,
-            connection_class=RequestsHttpConnection
+            connection_class=RequestsHttpConnection,
+            timeout=30,  # Increase timeout to 30 seconds
+            max_retries=3,  # Add retry logic
+            retry_on_timeout=True,
+            retry_on_status=[429, 500, 502, 503, 504]  # Retry on these status codes
         )
         return client
     except Exception as e:
@@ -84,7 +88,9 @@ def generate_embedding(text):
 def search_opensearch(query_embedding, size=5):
     """Search OpenSearch using k-NN for book-level results"""
     try:
+        logger.info("Creating OpenSearch client for search...")
         client = create_opensearch_client()
+        logger.info("OpenSearch client created successfully")
         
         # Prepare the search query
         search_body = {
@@ -100,12 +106,16 @@ def search_opensearch(query_embedding, size=5):
         }
         
         logger.info(f"Search body: {json.dumps(search_body, indent=2)}")
+        logger.info(f"Searching index: {OPENSEARCH_INDEX}")
         
-        # Execute search
+        # Execute search with timeout
+        logger.info("Executing search request...")
         response = client.search(
             index=OPENSEARCH_INDEX,
-            body=search_body
+            body=search_body,
+            request_timeout=30  # 30 second timeout for the search request
         )
+        logger.info("Search request completed successfully")
         
         # Process results
         hits = response['hits']['hits']
@@ -125,6 +135,7 @@ def search_opensearch(query_embedding, size=5):
         
     except Exception as e:
         logger.error(f"Error searching OpenSearch: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
         raise
 
 def create_index_if_not_exists():
@@ -199,6 +210,17 @@ def load_book_summary_to_opensearch(book_summary_data):
         
         logger.info(f"Loading book summary for: {book_title}")
         
+        # Fix generated_at to ISO 8601 format if possible
+        generated_at = book_summary_data.get('generated_at', '')
+        if generated_at:
+            import datetime
+            try:
+                dt = datetime.datetime.strptime(generated_at, "%Y-%m-%d %H:%M:%S")
+                generated_at = dt.isoformat()
+            except Exception:
+                # If parsing fails, leave as is
+                pass
+        
         # Prepare document
         doc = {
             "book_title": book_title,
@@ -209,7 +231,7 @@ def load_book_summary_to_opensearch(book_summary_data):
             "chunk_summaries": "\n\n".join(book_summary_data.get('chunk_summaries', [])),
             "embedding_model_id": book_summary_data.get('embedding_model_id', ''),
             "summary_model_id": book_summary_data.get('summary_model_id', ''),
-            "generated_at": book_summary_data.get('generated_at', '')
+            "generated_at": generated_at
         }
         
         # Create a unique ID for the book
@@ -239,12 +261,21 @@ def load_book_summary_to_opensearch(book_summary_data):
 def check_opensearch_index():
     """Check OpenSearch index status and document count"""
     try:
+        logger.info("Creating OpenSearch client for health check...")
         client = create_opensearch_client()
+        logger.info("OpenSearch client created successfully for health check")
+        
+        # Test basic connectivity first
+        logger.info("Testing OpenSearch connectivity...")
+        cluster_info = client.info()
+        logger.info(f"Connected to OpenSearch cluster: {cluster_info.get('cluster_name', 'unknown')}")
         
         # Check if index exists
+        logger.info(f"Checking if index {OPENSEARCH_INDEX} exists...")
         index_exists = client.indices.exists(index=OPENSEARCH_INDEX)
         
         if not index_exists:
+            logger.info(f"Index {OPENSEARCH_INDEX} does not exist")
             return {
                 'statusCode': 200,
                 'body': json.dumps({
@@ -254,14 +285,17 @@ def check_opensearch_index():
                 })
             }
         
+        logger.info(f"Index {OPENSEARCH_INDEX} exists, getting document count...")
         # Get document count
         count_response = client.count(index=OPENSEARCH_INDEX)
         document_count = count_response['count']
         
         # Get index stats
+        logger.info("Getting index statistics...")
         stats_response = client.indices.stats(index=OPENSEARCH_INDEX)
         index_stats = stats_response['indices'][OPENSEARCH_INDEX]
         
+        logger.info(f"Health check completed successfully. Document count: {document_count}")
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -279,11 +313,33 @@ def check_opensearch_index():
         
     except Exception as e:
         logger.error(f"Error checking OpenSearch index: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'error': f'Failed to check index: {str(e)}'
             })
+        }
+
+def purge_opensearch_index():
+    """Delete and recreate the OpenSearch index for book summaries."""
+    try:
+        client = create_opensearch_client()
+        if client.indices.exists(index=OPENSEARCH_INDEX):
+            client.indices.delete(index=OPENSEARCH_INDEX)
+            logger.info(f"Deleted index: {OPENSEARCH_INDEX}")
+        # Recreate the index
+        create_index_if_not_exists()
+        logger.info(f"Recreated index: {OPENSEARCH_INDEX}")
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'success': True, 'message': f'Index {OPENSEARCH_INDEX} purged and recreated.'})
+        }
+    except Exception as e:
+        logger.error(f"Error purging OpenSearch index: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'success': False, 'error': str(e)})
         }
 
 def lambda_handler(event, context):
@@ -302,6 +358,9 @@ def lambda_handler(event, context):
             elif event['action'] == 'check_index':
                 logger.info("Processing check_index action")
                 return check_opensearch_index()
+            elif event['action'] == 'purge_index':
+                logger.info("Processing purge_index action")
+                return purge_opensearch_index()
         
         # Handle API Gateway requests (search functionality)
         if 'body' in event:

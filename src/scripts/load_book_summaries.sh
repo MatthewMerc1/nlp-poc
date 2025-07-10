@@ -1,37 +1,44 @@
 #!/bin/bash
 
-# Script to load book summaries into OpenSearch
+# Script to load book summaries into OpenSearch via Lambda function
+# This avoids VPC connection issues by using the Lambda function that's already in the VPC
 
-set -e
+# Get the bucket name from environment or Terraform output
+BUCKET_NAME=${BUCKET_NAME:-$(cd infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)}
 
-# Get configuration from environment or set defaults
-BUCKET_NAME=${BUCKET_NAME:-""}
-OPENSEARCH_ENDPOINT=${OPENSEARCH_ENDPOINT:-""}
-AWS_PROFILE=${AWS_PROFILE:-"caylent-dev-test"}
-
-# Check if required variables are provided
 if [ -z "$BUCKET_NAME" ]; then
-    echo "Error: BUCKET_NAME environment variable is required"
-    echo "Usage: BUCKET_NAME=your-bucket-name OPENSEARCH_ENDPOINT=your-endpoint ./load_book_summaries.sh"
+    echo "Error: Could not get bucket name. Please set BUCKET_NAME environment variable or run 'make deploy' first."
     exit 1
 fi
 
-if [ -z "$OPENSEARCH_ENDPOINT" ]; then
-    echo "Error: OPENSEARCH_ENDPOINT environment variable is required"
-    echo "Usage: BUCKET_NAME=your-bucket-name OPENSEARCH_ENDPOINT=your-endpoint ./load_book_summaries.sh"
-    exit 1
-fi
+# Set AWS profile (can be overridden by environment variable)
+AWS_PROFILE=${AWS_PROFILE:-"caylent-dev-test"}
 
 echo "Starting book summary loading..."
 echo "Bucket: $BUCKET_NAME"
-echo "OpenSearch Endpoint: $OPENSEARCH_ENDPOINT"
 echo "AWS Profile: $AWS_PROFILE"
 echo "=================================="
 
-# Run the book summary loading script
-python src/scripts/load_book_summaries_to_opensearch.py \
-    --bucket "$BUCKET_NAME" \
-    --opensearch-endpoint "$OPENSEARCH_ENDPOINT" \
-    --profile "$AWS_PROFILE"
+# Check if Python script exists
+if [ ! -f "src/scripts/load_book_summaries_via_lambda.py" ]; then
+    echo "Error: src/scripts/load_book_summaries_via_lambda.py not found"
+    exit 1
+fi
+
+# Install dependencies if needed
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+fi
+
+echo "Activating virtual environment..."
+source venv/bin/activate
+
+echo "Installing dependencies..."
+pip install -r requirements.txt
+
+# Run the Lambda-based loading script
+echo "Starting book summary loading via Lambda..."
+python src/scripts/load_book_summaries_via_lambda.py --bucket "$BUCKET_NAME" --profile "$AWS_PROFILE"
 
 echo "Book summary loading complete!" 
