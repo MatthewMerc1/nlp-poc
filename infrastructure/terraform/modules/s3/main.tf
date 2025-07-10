@@ -76,6 +76,9 @@ resource "aws_s3_object" "folders" {
   bucket = aws_s3_bucket.main.id
   key    = "${each.value}/"
   source = "/dev/null"
+  
+  # Add server-side encryption to comply with bucket policy
+  server_side_encryption = var.encryption_algorithm
 }
 
 # Lifecycle policies
