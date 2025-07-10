@@ -52,7 +52,7 @@ make deploy
 
 ### 6. Test the API
 ```bash
-# Test book recommendations
+# Test semantic search
 make test
 ```
 
@@ -68,11 +68,14 @@ terraform apply
 
 ### Data Processing
 ```bash
-# Generate book embeddings
-./src/scripts/generate_book_embeddings.sh
+# Upload books
+./src/scripts/upload_books.sh
 
-# Load book embeddings to OpenSearch
-./src/scripts/load_book_embeddings.sh
+# Generate embeddings
+./src/scripts/generate_embeddings.sh
+
+# Load to OpenSearch
+./src/scripts/load_to_opensearch.sh
 ```
 
 ### API Deployment

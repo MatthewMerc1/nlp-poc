@@ -77,7 +77,7 @@ module "lambda" {
   # Environment variables
   environment_variables = {
     OPENSEARCH_ENDPOINT = module.opensearch.domain_endpoint
-    OPENSEARCH_INDEX    = "book-recommendations"
+    OPENSEARCH_INDEX    = "book-embeddings"
     BEDROCK_MODEL_ID    = "amazon.titan-embed-text-v1"
     LOG_LEVEL           = "INFO"
   }
