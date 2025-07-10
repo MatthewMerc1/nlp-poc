@@ -1,35 +1,37 @@
 #!/bin/bash
 
-# Script to generate embeddings for books using Amazon Bedrock
+# Script to generate book embeddings for recommendation system using Amazon Bedrock
 
 # Get the bucket name from Terraform output
-BUCKET_NAME=$(cd infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)
+BUCKET_NAME=$(cd ../../infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)
 
 if [ -z "$BUCKET_NAME" ]; then
     echo "Error: Could not get bucket name from Terraform output."
-    echo "Please run 'make deploy' first to create the bucket."
+    echo "Please run 'terraform apply' first to create the bucket."
     exit 1
 fi
 
 echo "Found S3 bucket: $BUCKET_NAME"
 
 # Check if Python script exists
-if [ ! -f "src/scripts/generate_embeddings.py" ]; then
-    echo "Error: src/scripts/generate_embeddings.py not found"
+if [ ! -f "generate_book_embeddings.py" ]; then
+    echo "Error: generate_book_embeddings.py not found"
     exit 1
 fi
 
 # Install dependencies if needed
-if [ ! -d "venv" ]; then
+if [ ! -d "../../venv" ]; then
     echo "Creating virtual environment..."
+    cd ../..
     python3 -m venv venv
+    cd src/scripts
 fi
 
 echo "Activating virtual environment..."
-source venv/bin/activate
+source ../../venv/bin/activate
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+pip install -r ../../requirements.txt
 
 # Check if Bedrock is available in the region
 echo "Checking Bedrock availability..."
@@ -47,13 +49,11 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
-# Run the embedding generation script
-echo "Starting embedding generation..."
-python src/scripts/generate_embeddings.py \
+# Run the book embedding generation script
+echo "Starting book embedding generation for recommendations..."
+python generate_book_embeddings.py \
     --bucket "$BUCKET_NAME" \
     --profile "caylent-dev-test" \
-    --model "amazon.titan-embed-text-v1" \
-    --chunk-size 1000 \
-    --overlap 100
+    --model "amazon.titan-embed-text-v1"
 
-echo "Embedding generation complete!" 
+echo "Book embedding generation complete!" 

@@ -9,7 +9,9 @@ help:
 	@echo "  package    - Package Lambda function"
 	@echo "  deploy-lambda - Package and deploy Lambda function to AWS"
 	@echo "  pipeline   - Run the complete data pipeline"
-	@echo "  load-embeddings - Load embeddings to OpenSearch via Lambda"
+	@echo "  generate-book-embeddings - Generate book embeddings for recommendations"
+	@echo "  load-book-embeddings - Load book embeddings to OpenSearch"
+
 	@echo "  test       - Run API tests"
 	@echo "  teardown   - Tear down infrastructure"
 	@echo "  clean      - Clean up generated files"
@@ -36,17 +38,22 @@ pipeline:
 	@echo "Running data pipeline..."
 	@./scripts/pipeline.sh
 
-# Load embeddings to OpenSearch via Lambda
-load-embeddings:
-	@echo "Loading embeddings to OpenSearch via Lambda..."
-	@cd infrastructure/terraform/environments/dev && \
-	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	python ../../src/scripts/load_embeddings_via_lambda.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test
+# Generate book embeddings for recommendations
+generate-book-embeddings:
+	@echo "Generating book embeddings for recommendations..."
+	@cd src/scripts && ./generate_book_embeddings.sh
+
+# Load book embeddings to OpenSearch
+load-book-embeddings:
+	@echo "Loading book embeddings to OpenSearch..."
+	@cd src/scripts && ./load_book_embeddings.sh
+
+
 
 # Run tests
 test:
 	@echo "Running API tests..."
-	@python tests/api/test_semantic_api.py "test query"
+	@python tests/api/test_book_recommendations.py "gothic horror with female protagonist"
 
 # Tear down infrastructure
 teardown:

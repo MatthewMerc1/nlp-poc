@@ -1,6 +1,6 @@
-# NLP POC - Vector Search with Project Gutenberg Books
+# NLP POC - Book Recommendation System
 
-This project demonstrates a complete NLP pipeline for vector search using Project Gutenberg books, Amazon Bedrock embeddings, and OpenSearch.
+This project demonstrates a complete book recommendation system using Project Gutenberg books, Amazon Bedrock embeddings, and OpenSearch. The system provides semantic book recommendations based on user queries like "gothic horror with female protagonist".
 
 ## 📁 Project Structure
 
@@ -11,14 +11,10 @@ nlp-poc/
 │   │   ├── lambda_function.py
 │   │   └── requirements.txt
 │   ├── scripts/           # Core Python scripts
-│   │   ├── upload_gutenberg.py      # Download books from Project Gutenberg
-│   │   ├── generate_embeddings.py   # Generate embeddings using Bedrock
-│   │   ├── check_embeddings.py      # Check generated embeddings
-│   │   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch (legacy)
-│   │   ├── load_embeddings_via_lambda.py    # Load embeddings via Lambda (recommended)
-│   │   ├── upload_books.sh          # Shell script to upload books
-│   │   ├── generate_embeddings.sh   # Shell script to generate embeddings
-│   │   └── load_to_opensearch.sh    # Shell script to load to OpenSearch (updated)
+│   │   ├── generate_book_embeddings.py      # Generate book embeddings for recommendations
+│   │   ├── load_book_embeddings_to_opensearch.py # Load book embeddings to OpenSearch
+│   │   ├── generate_book_embeddings.sh      # Shell script to generate book embeddings
+│   │   └── load_book_embeddings.sh          # Shell script to load book embeddings
 │   └── api/               # API-related code (future)
 ├── infrastructure/        # Infrastructure as Code
 │   ├── terraform/         # Terraform configurations
@@ -42,7 +38,7 @@ nlp-poc/
 │   ├── unit/              # Unit tests
 │   ├── integration/       # Integration tests
 │   └── api/               # API tests
-│       └── test_semantic_api.py
+│       └── test_book_recommendations.py
 ├── docs/                  # Documentation
 │   ├── api/               # API documentation
 │   ├── deployment/        # Deployment guides
@@ -89,37 +85,24 @@ terraform apply
 
 **Note:** OpenSearch domain creation takes 10-15 minutes.
 
-#### 2. Upload Books from Project Gutenberg
+#### 2. Generate Book Embeddings for Recommendations
 
 ```bash
-./src/scripts/upload_books.sh
-```
-
-#### 3. Generate Embeddings
-
-```bash
-./src/scripts/generate_embeddings.sh
-```
-
-#### 4. Load Embeddings into OpenSearch
-
-**Option A: Lambda-based approach (Recommended)**
-```bash
-# Uses Lambda function to load embeddings (avoids connectivity issues)
-./src/scripts/load_to_opensearch.sh
+# Generate embeddings for entire books (not content chunks)
+./src/scripts/generate_book_embeddings.sh
 
 # Or use the Makefile command
-make load-embeddings
+make generate-book-embeddings
 ```
 
-**Option B: Direct approach (Legacy)**
+#### 3. Load Book Embeddings into OpenSearch
+
 ```bash
-# Direct OpenSearch connection (may have connectivity issues)
-python src/scripts/load_embeddings_to_opensearch.py \
-    --bucket "$BUCKET_NAME" \
-    --opensearch-endpoint "https://$OPENSEARCH_ENDPOINT" \
-    --profile "caylent-dev-test" \
-    --index "book-embeddings"
+# Load book embeddings for recommendations
+./src/scripts/load_book_embeddings.sh
+
+# Or use the Makefile command
+make load-book-embeddings
 ```
 
 #### 5. Package and Deploy Lambda
@@ -133,14 +116,14 @@ cd infrastructure/terraform
 terraform apply
 ```
 
-#### 6. Test Semantic Search API
+#### 4. Test Book Recommendation API
 
 ```bash
 # Test the API (automatically gets URL and API key from Terraform)
-python tests/api/test_semantic_api.py "What is the meaning of life?"
+python tests/api/test_book_recommendations.py "gothic horror with female protagonist"
 
 # Or with custom size
-python tests/api/test_semantic_api.py "What is the meaning of life?" 10
+python tests/api/test_book_recommendations.py "mystery detective fiction" 10
 ```
 
 ### 7. Access OpenSearch Dashboard
@@ -159,7 +142,8 @@ make help      # Show all available commands
 make setup     # Set up development environment
 make deploy    # Deploy infrastructure
 make pipeline  # Run complete data pipeline
-make load-embeddings # Load embeddings to OpenSearch via Lambda
+make generate-book-embeddings # Generate book embeddings for recommendations
+make load-book-embeddings # Load book embeddings to OpenSearch
 make test      # Run API tests
 make teardown  # Tear down infrastructure
 make clean     # Clean up generated files
@@ -169,18 +153,18 @@ make status    # Show project status
 
 ## 📚 Books Included
 
-The following books from Project Gutenberg are processed:
+The following books from Project Gutenberg are included with metadata and embeddings:
 
-1. **Pride and Prejudice** - Jane Austen (899 chunks)
-2. **The Great Gatsby** - F. Scott Fitzgerald (319 chunks)
-3. **Alice's Adventures in Wonderland** - Lewis Carroll (178 chunks)
-4. **Frankenstein** - Mary Shelley (518 chunks)
-5. **The Adventures of Sherlock Holmes** - Arthur Conan Doyle (669 chunks)
-6. **Dracula** - Bram Stoker
-7. **The Picture of Dorian Gray** - Oscar Wilde
-8. **The Time Machine** - H.G. Wells
-9. **A Christmas Carol** - Charles Dickens
-10. **The War of the Worlds** - H.G. Wells
+1. **Pride and Prejudice** - Jane Austen (Romance, Classic Literature)
+2. **The Great Gatsby** - F. Scott Fitzgerald (Literary Fiction, Classic Literature)
+3. **Alice's Adventures in Wonderland** - Lewis Carroll (Fantasy, Children's Literature)
+4. **Frankenstein** - Mary Shelley (Gothic Fiction, Science Fiction, Horror)
+5. **The Adventures of Sherlock Holmes** - Arthur Conan Doyle (Mystery, Detective Fiction)
+6. **Dracula** - Bram Stoker (Gothic Fiction, Horror, Vampire Fiction)
+7. **The Picture of Dorian Gray** - Oscar Wilde (Gothic Fiction, Philosophical Fiction)
+8. **The Time Machine** - H.G. Wells (Science Fiction, Time Travel)
+9. **A Christmas Carol** - Charles Dickens (Classic Literature, Christmas Fiction)
+10. **The War of the Worlds** - H.G. Wells (Science Fiction, Alien Invasion)
 
 ## 🔧 Configuration
 
@@ -212,62 +196,54 @@ Key variables in `infrastructure/terraform/terraform.tfvars`:
 
 - `book_title`: Text field for filtering
 - `author`: Text field for filtering
-- `chunk_index`: Integer for ordering
-- `text`: Original text content
-- `text_vector`: 1536-dimensional embedding vector
+- `genre`: Text field for filtering
+- `description`: Text field for filtering
+- `gutenberg_id`: Keyword field for exact matching
+- `book_vector`: 1536-dimensional embedding vector for recommendations
 
-## 🔄 Lambda-Based Embedding Loading
+## 🔄 Book Recommendation System
 
-The project now uses a **Lambda-based approach** for loading embeddings into OpenSearch, which provides several advantages:
+The project now provides **semantic book recommendations** instead of content search. Key features:
 
-### Why Lambda-Based Loading?
+### Key Features
 
-1. **No Connectivity Issues**: Lambda function is already in the VPC and can access OpenSearch
-2. **More Secure**: No need to expose OpenSearch to the internet
-3. **Reliable**: Avoids network timeouts and connection issues
-4. **Scalable**: Can handle large datasets efficiently
+- **Semantic Understanding**: Uses embeddings to understand book themes and content
+- **Rich Metadata**: Includes genre, author, and descriptions for better recommendations
+- **Scalable**: Can handle hundreds of thousands of books
+- **Fast**: Vector similarity search provides instant recommendations
 
 ### How It Works
 
-1. **Lambda Function Enhancement**: The Lambda function now includes a `load_embeddings` action
-2. **S3 Integration**: Reads embedding files from S3 bucket
-3. **Bulk Indexing**: Uses OpenSearch bulk API for efficient loading
-4. **Error Handling**: Comprehensive error handling and logging
+1. **Book Processing**: Books are downloaded and metadata is extracted
+2. **Embedding Generation**: Entire books are embedded (not just chunks)
+3. **Vector Storage**: Book embeddings are stored in OpenSearch
+4. **Semantic Search**: User queries are embedded and matched to similar books
 
-### Usage
+### Example Queries
 
-```bash
-# Load all embeddings using the updated script
-./src/scripts/load_to_opensearch.sh
+- "gothic horror with female protagonist"
+- "mystery detective fiction"
+- "science fiction time travel"
+- "romance classic literature"
+- "fantasy children's books"
 
-# Or use the dedicated Makefile command
-make load-embeddings
+## 🔍 Book Recommendation Features
 
-# Or run the Python script directly
-python src/scripts/load_embeddings_via_lambda.py \
-    --bucket "your-bucket-name" \
-    --profile "your-aws-profile"
-```
-- `model_id`: Embedding model used
-- `uploaded_at`: Timestamp
-
-## 🔍 Vector Search Features
-
-- **Semantic Search**: Find similar text using vector similarity
+- **Semantic Search**: Find similar books using vector similarity
 - **HNSW Algorithm**: Fast approximate nearest neighbor search
 - **Cosine Similarity**: Semantic matching metric
-- **Hybrid Search**: Combine vector and text search
+- **Rich Metadata**: Genre, author, and description filtering
 
 ## 🌐 API Usage
 
-### Semantic Search Endpoint
+### Book Recommendation Endpoint
 
 **URL**: `POST /search`
 
 **Request Body**:
 ```json
 {
-  "query": "What is the meaning of life?",
+  "query": "gothic horror with female protagonist",
   "size": 5
 }
 ```
@@ -275,15 +251,15 @@ python src/scripts/load_embeddings_via_lambda.py \
 **Response**:
 ```json
 {
-  "query": "What is the meaning of life?",
-  "results": [
+  "query": "gothic horror with female protagonist",
+  "recommendations": [
     {
       "score": 0.9234,
-      "title": "The Great Gatsby",
-      "author": "F. Scott Fitzgerald",
-      "book_id": "gatsby",
-      "chapter": "Chapter 1",
-      "content": "In my younger and more vulnerable years my father gave me some advice..."
+      "title": "Frankenstein",
+      "author": "Mary Shelley",
+      "genre": "Gothic Fiction, Science Fiction, Horror",
+      "description": "A Gothic horror novel about a scientist who creates a monster and the consequences of playing God, exploring themes of creation and responsibility.",
+      "gutenberg_id": "84"
     }
   ],
   "total_results": 5
@@ -297,10 +273,10 @@ python src/scripts/load_embeddings_via_lambda.py \
 curl -X POST "https://your-api-gateway-url/prod/search" \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
-  -d '{"query": "What is the meaning of life?", "size": 5}'
+  -d '{"query": "gothic horror with female protagonist", "size": 5}'
 
 # Using Python (automatically gets API key)
-python scripts/test_semantic_api.py "What is the meaning of life?"
+python tests/api/test_book_recommendations.py "gothic horror with female protagonist"
 ```
 
 ## 💰 Cost Estimation
@@ -320,17 +296,11 @@ python scripts/test_semantic_api.py "What is the meaning of life?"
 # Activate virtual environment
 source venv/bin/activate
 
-# Upload books
-python scripts/upload_gutenberg.py --bucket "your-bucket" --profile "your-profile"
+# Generate book embeddings
+python src/scripts/generate_book_embeddings.py --bucket "your-bucket" --profile "your-profile"
 
-# Generate embeddings
-python scripts/generate_embeddings.py --bucket "your-bucket" --profile "your-profile"
-
-# Check embeddings
-python scripts/check_embeddings.py --bucket "your-bucket" --profile "your-profile"
-
-# Load to OpenSearch
-python scripts/load_embeddings_to_opensearch.py \
+# Load book embeddings to OpenSearch
+python src/scripts/load_book_embeddings_to_opensearch.py \
   --bucket "your-bucket" \
   --opensearch-endpoint "your-opensearch-endpoint" \
   --profile "your-profile"
@@ -338,10 +308,9 @@ python scripts/load_embeddings_to_opensearch.py \
 
 ### Adding New Books
 
-1. Update the book list in `scripts/upload_gutenberg.py`
-2. Run `./upload_books.sh`
-3. Run `./generate_embeddings.sh`
-4. Run `./load_to_opensearch.sh`
+1. Update the book list in `src/scripts/generate_book_embeddings.py`
+2. Run `./src/scripts/generate_book_embeddings.sh`
+3. Run `./src/scripts/load_book_embeddings.sh`
 
 ## 🔒 Security Notes
 
