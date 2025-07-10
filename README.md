@@ -66,7 +66,7 @@ make setup
 # Deploy infrastructure
 make deploy
 
-# Run complete data pipeline
+# Run complete data pipeline (book-level summaries)
 make pipeline
 
 # Test the API
@@ -95,31 +95,18 @@ terraform apply
 ./src/scripts/upload_books.sh
 ```
 
-#### 3. Generate Embeddings
+#### 3. Generate Book-Level Summaries (NEW)
 
 ```bash
-./src/scripts/generate_embeddings.sh
+# Generate hierarchical book summaries and embeddings
+./src/scripts/generate_book_summaries.sh
 ```
 
-#### 4. Load Embeddings into OpenSearch
+#### 4. Load Book Summaries into OpenSearch
 
-**Option A: Lambda-based approach (Recommended)**
 ```bash
-# Uses Lambda function to load embeddings (avoids connectivity issues)
-./src/scripts/load_to_opensearch.sh
-
-# Or use the Makefile command
-make load-embeddings
-```
-
-**Option B: Direct approach (Legacy)**
-```bash
-# Direct OpenSearch connection (may have connectivity issues)
-python src/scripts/load_embeddings_to_opensearch.py \
-    --bucket "$BUCKET_NAME" \
-    --opensearch-endpoint "https://$OPENSEARCH_ENDPOINT" \
-    --profile "caylent-dev-test" \
-    --index "book-embeddings"
+# Load book summaries into OpenSearch for book-level search
+./src/scripts/load_book_summaries.sh
 ```
 
 #### 5. Package and Deploy Lambda
@@ -133,7 +120,7 @@ cd infrastructure/terraform
 terraform apply
 ```
 
-#### 6. Test Semantic Search API
+#### 6. Test Book-Level Semantic Search API
 
 ```bash
 # Test the API (automatically gets URL and API key from Terraform)
@@ -210,15 +197,43 @@ Key variables in `infrastructure/terraform/terraform.tfvars`:
 
 ### OpenSearch Index Structure
 
+#### Book-Level Search (Current)
+- `book_title`: Text field for filtering
+- `author`: Text field for filtering
+- `book_summary`: High-level book summary
+- `book_embedding`: 1536-dimensional embedding vector of the book summary
+- `total_chunks`: Number of chunks used for summarization
+- `chunk_summaries`: Combined summaries of all chunks
+- `embedding_model_id`: Model used for embeddings
+- `summary_model_id`: Model used for summarization
+- `generated_at`: Timestamp of generation
+
+#### Chunk-Level Search (Legacy)
 - `book_title`: Text field for filtering
 - `author`: Text field for filtering
 - `chunk_index`: Integer for ordering
 - `text`: Original text content
 - `text_vector`: 1536-dimensional embedding vector
 
-## 🔄 Lambda-Based Embedding Loading
+## 🔄 Book-Level Semantic Search
 
-The project now uses a **Lambda-based approach** for loading embeddings into OpenSearch, which provides several advantages:
+The project now uses **hierarchical summarization** to provide book-level semantic search instead of passage-level search. This approach:
+
+1. **Chunks books into large sections** (8,000 characters with 500 character overlap)
+2. **Generates summaries for each chunk** using Claude 3 Sonnet
+3. **Creates a final book summary** by combining all chunk summaries
+4. **Generates embeddings for the book summary** using Titan Embed
+5. **Returns matching books** instead of individual passages
+
+### Benefits:
+- **Better context**: Users get complete book recommendations
+- **Reduced noise**: No more fragmented passage results
+- **Higher quality**: Hierarchical summarization captures book themes
+- **Scalable**: Fewer embeddings to store and search
+
+## 🔄 Lambda-Based Book Summary Loading
+
+The project uses a **Lambda-based approach** for loading book summaries into OpenSearch, which provides several advantages:
 
 ### Why Lambda-Based Loading?
 

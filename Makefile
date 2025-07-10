@@ -9,7 +9,9 @@ help:
 	@echo "  package    - Package Lambda function"
 	@echo "  deploy-lambda - Package and deploy Lambda function to AWS"
 	@echo "  pipeline   - Run the complete data pipeline"
-	@echo "  load-embeddings - Load embeddings to OpenSearch via Lambda"
+	@echo "  generate-summaries - Generate book-level summaries"
+	@echo "  load-summaries - Load book summaries to OpenSearch"
+	@echo "  load-embeddings - Load embeddings to OpenSearch via Lambda (legacy)"
 	@echo "  test       - Run API tests"
 	@echo "  teardown   - Tear down infrastructure"
 	@echo "  clean      - Clean up generated files"
@@ -36,7 +38,22 @@ pipeline:
 	@echo "Running data pipeline..."
 	@./scripts/pipeline.sh
 
-# Load embeddings to OpenSearch via Lambda
+# Generate book summaries
+generate-summaries:
+	@echo "Generating book summaries..."
+	@cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	BUCKET_NAME="$$BUCKET_NAME" ../../src/scripts/generate_book_summaries.sh
+
+# Load book summaries to OpenSearch
+load-summaries:
+	@echo "Loading book summaries to OpenSearch..."
+	@cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	BUCKET_NAME="$$BUCKET_NAME" OPENSEARCH_ENDPOINT="$$OPENSEARCH_ENDPOINT" ../../src/scripts/load_book_summaries.sh
+
+# Load embeddings to OpenSearch via Lambda (legacy)
 load-embeddings:
 	@echo "Loading embeddings to OpenSearch via Lambda..."
 	@cd infrastructure/terraform/environments/dev && \
@@ -45,8 +62,8 @@ load-embeddings:
 
 # Run tests
 test:
-	@echo "Running API tests..."
-	@python tests/api/test_semantic_api.py "test query"
+	@echo "Running book-level API tests..."
+	@python tests/api/test_book_search.py "What is the meaning of life?"
 
 # Tear down infrastructure
 teardown:

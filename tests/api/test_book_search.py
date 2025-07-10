@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for the semantic search API
+Test script for the book-level semantic search API
 """
 
 import requests
@@ -30,9 +30,9 @@ def get_api_key():
         print("Could not get API key from Terraform:", e)
         return None
 
-def test_semantic_search(api_url, api_key, query, size=5):
+def test_book_search(api_url, api_key, query, size=5):
     """
-    Test the semantic search API
+    Test the book-level semantic search API
     
     Args:
         api_url (str): The API Gateway URL
@@ -52,56 +52,62 @@ def test_semantic_search(api_url, api_key, query, size=5):
     }
     
     try:
-        print(f"Searching for: '{query}'")
-        print(f"API URL: {api_url}")
-        print(f"API Key: {api_key[:8]}...{api_key[-4:]}")  # Show first 8 and last 4 chars
-        print("-" * 50)
+        print(f"🔍 Searching for books matching: '{query}'")
+        print(f"🌐 API URL: {api_url}")
+        print(f"🔑 API Key: {api_key[:8]}...{api_key[-4:] if len(api_key) > 12 else '***'}")
+        print("=" * 60)
         
         response = requests.post(api_url, json=payload, headers=headers)
         
         if response.status_code == 200:
             data = response.json()
-            print(f"Query: {data['query']}")
-            print(f"Total results: {data['total_results']}")
-            print("\nResults:")
+            print(f"📊 Query: {data['query']}")
+            print(f"📈 Total results: {data['total_results']}")
+            print("\n📚 Book Recommendations:")
             
             for i, result in enumerate(data['results'], 1):
-                print(f"\n{i}. Score: {result['score']:.4f}")
-                print(f"   Title: {result['book_title']}")
-                print(f"   Author: {result['author']}")
-                print(f"   Summary: {result['book_summary'][:300]}...")
+                print(f"\n{i}. 📖 {result['book_title']}")
+                print(f"   👤 Author: {result['author']}")
+                print(f"   ⭐ Score: {result['score']:.4f}")
+                print(f"   📝 Summary: {result['book_summary'][:200]}...")
+                print("-" * 50)
                 
         elif response.status_code == 403:
-            print("Error: 403 Forbidden - Check your API key")
+            print("❌ Error: 403 Forbidden - Check your API key")
             print(f"Response: {response.text}")
         elif response.status_code == 429:
-            print("Error: 429 Too Many Requests - Rate limit exceeded")
+            print("❌ Error: 429 Too Many Requests - Rate limit exceeded")
             print(f"Response: {response.text}")
         else:
-            print(f"Error: {response.status_code}")
+            print(f"❌ Error: {response.status_code}")
             print(f"Response: {response.text}")
             
-    except Exception as e:
-        print(f"Error making request: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network error: {e}")
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON decode error: {e}")
 
 def main():
-    # Get API URL and key from Terraform
+    """Main function to run the book search test."""
+    if len(sys.argv) < 2:
+        print("Usage: python test_book_search.py <query> [size]")
+        print("Example: python test_book_search.py 'What is the meaning of life?' 5")
+        sys.exit(1)
+    
+    query = sys.argv[1]
+    size = int(sys.argv[2]) if len(sys.argv) > 2 else 5
+    
+    # Get API configuration
     api_url = get_api_url()
     api_key = get_api_key()
     
     if not api_url or not api_key:
-        print("Could not get API URL or API key from Terraform")
-        print("Make sure you're in the correct directory and Terraform is deployed")
+        print("❌ Could not get API configuration from Terraform")
+        print("Make sure infrastructure is deployed and you're in the correct directory")
         sys.exit(1)
     
-    if len(sys.argv) < 2:
-        query = input("Enter your query: ")
-        size = 5
-    else:
-        query = sys.argv[1]
-        size = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-
-    test_semantic_search(api_url, api_key, query, size)
+    # Test the book search
+    test_book_search(api_url, api_key, query, size)
 
 if __name__ == "__main__":
     main() 

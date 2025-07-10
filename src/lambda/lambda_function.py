@@ -15,7 +15,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Constants
-OPENSEARCH_INDEX = "book-embeddings"
+OPENSEARCH_INDEX = "book-summaries"  # Book-level index
 BEDROCK_MODEL_ID = "amazon.titan-embed-text-v1"
 
 def get_aws_auth():
@@ -82,7 +82,7 @@ def generate_embedding(text):
         raise
 
 def search_opensearch(query_embedding, size=5):
-    """Search OpenSearch using k-NN"""
+    """Search OpenSearch using k-NN for book-level results"""
     try:
         client = create_opensearch_client()
         
@@ -91,7 +91,7 @@ def search_opensearch(query_embedding, size=5):
             "size": size,
             "query": {
                 "knn": {
-                    "text_vector": {
+                    "book_embedding": {
                         "vector": query_embedding,
                         "k": size
                     }
@@ -116,12 +116,11 @@ def search_opensearch(query_embedding, size=5):
             results.append({
                 'book_title': source.get('book_title', ''),
                 'author': source.get('author', ''),
-                'text': source.get('text', ''),
-                'chunk_index': source.get('chunk_index', 0),
+                'book_summary': source.get('book_summary', ''),
                 'score': hit['_score']
             })
         
-        logger.info(f"Found {len(results)} results")
+        logger.info(f"Found {len(results)} book results")
         return results
         
     except Exception as e:
@@ -137,7 +136,7 @@ def create_index_if_not_exists():
         if not client.indices.exists(index=OPENSEARCH_INDEX):
             logger.info(f"Creating index: {OPENSEARCH_INDEX}")
             
-            # Index mapping for vector search
+            # Index mapping for book-level vector search
             index_mapping = {
                 "settings": {
                     "index": {
@@ -154,9 +153,8 @@ def create_index_if_not_exists():
                     "properties": {
                         "book_title": {"type": "text"},
                         "author": {"type": "text"},
-                        "text": {"type": "text"},
-                        "chunk_index": {"type": "integer"},
-                        "text_vector": {
+                        "book_summary": {"type": "text"},
+                        "book_embedding": {
                             "type": "knn_vector",
                             "dimension": 1536,
                             "method": {
@@ -164,7 +162,12 @@ def create_index_if_not_exists():
                                 "space_type": "cosinesimil",
                                 "engine": "nmslib"
                             }
-                        }
+                        },
+                        "total_chunks": {"type": "integer"},
+                        "chunk_summaries": {"type": "text"},
+                        "embedding_model_id": {"type": "keyword"},
+                        "summary_model_id": {"type": "keyword"},
+                        "generated_at": {"type": "date"}
                     }
                 }
             }
@@ -181,53 +184,56 @@ def create_index_if_not_exists():
         logger.error(f"Error creating index: {str(e)}")
         raise
 
-def load_embeddings_to_opensearch(embeddings_data):
-    """Load embeddings data into OpenSearch"""
+def load_book_summary_to_opensearch(book_summary_data):
+    """Load book summary data into OpenSearch"""
     try:
         client = create_opensearch_client()
         
         # Create index if it doesn't exist
         create_index_if_not_exists()
         
-        book_title = embeddings_data.get('book_title', 'Unknown')
-        author = embeddings_data.get('author', 'Unknown')
-        embeddings = embeddings_data.get('embeddings', [])
+        book_title = book_summary_data.get('book_title', 'Unknown')
+        author = book_summary_data.get('author', 'Unknown')
+        book_summary = book_summary_data.get('book_summary', '')
+        book_embedding = book_summary_data.get('book_embedding', [])
         
-        logger.info(f"Loading {len(embeddings)} embeddings for book: {book_title}")
+        logger.info(f"Loading book summary for: {book_title}")
         
-        # Bulk index the embeddings
-        bulk_data = []
-        for i, embedding in enumerate(embeddings):
-            # Prepare document
-            doc = {
-                "book_title": book_title,
-                "author": author,
-                "text": embedding.get('text', ''),
-                "chunk_index": embedding.get('chunk_index', i),
-                "text_vector": embedding.get('embedding', [])
-            }
-            
-            # Add to bulk data
-            bulk_data.append({"index": {"_index": OPENSEARCH_INDEX}})
-            bulk_data.append(doc)
+        # Prepare document
+        doc = {
+            "book_title": book_title,
+            "author": author,
+            "book_summary": book_summary,
+            "book_embedding": book_embedding,
+            "total_chunks": book_summary_data.get('total_chunks', 0),
+            "chunk_summaries": "\n\n".join(book_summary_data.get('chunk_summaries', [])),
+            "embedding_model_id": book_summary_data.get('embedding_model_id', ''),
+            "summary_model_id": book_summary_data.get('summary_model_id', ''),
+            "generated_at": book_summary_data.get('generated_at', '')
+        }
         
-        # Execute bulk operation
-        if bulk_data:
-            response = client.bulk(body=bulk_data, refresh=True)
-            
-            # Check for errors
-            if response.get('errors', False):
-                logger.error(f"Bulk indexing errors: {response}")
-                return False
-            
-            logger.info(f"Successfully loaded {len(embeddings)} embeddings for {book_title}")
+        # Create a unique ID for the book
+        import re
+        book_id = re.sub(r'[^\w\s-]', '', book_title).strip()
+        book_id = re.sub(r'[-\s]+', '-', book_id).lower()
+        
+        # Index the document
+        response = client.index(
+            index=OPENSEARCH_INDEX,
+            id=book_id,
+            body=doc,
+            refresh=True
+        )
+        
+        if response['result'] == 'created' or response['result'] == 'updated':
+            logger.info(f"Successfully loaded book summary for {book_title}")
             return True
         else:
-            logger.warning(f"No embeddings to load for {book_title}")
-            return True
+            logger.error(f"Failed to load book summary for {book_title}")
+            return False
             
     except Exception as e:
-        logger.error(f"Error loading embeddings to OpenSearch: {str(e)}")
+        logger.error(f"Error loading book summary to OpenSearch: {str(e)}")
         return False
 
 def check_opensearch_index():
@@ -283,12 +289,12 @@ def check_opensearch_index():
 def lambda_handler(event, context):
     """Main Lambda handler"""
     try:
-        # Handle direct Lambda invocations (for loading embeddings)
+        # Handle direct Lambda invocations (for loading book summaries)
         if 'action' in event:
-            if event['action'] == 'load_embeddings':
-                logger.info("Processing load_embeddings action")
-                embeddings_data = event.get('embeddings_data', {})
-                success = load_embeddings_to_opensearch(embeddings_data)
+            if event['action'] == 'load_book_summary':
+                logger.info("Processing load_book_summary action")
+                book_summary_data = event.get('book_summary_data', {})
+                success = load_book_summary_to_opensearch(book_summary_data)
                 return {
                     'statusCode': 200 if success else 500,
                     'body': json.dumps({'success': success})
