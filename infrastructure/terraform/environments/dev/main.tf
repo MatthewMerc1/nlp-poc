@@ -69,6 +69,10 @@ module "lambda" {
   # Set to true to manage Lambda function with Terraform
   create_lambda_function = true 
   
+  # Increase timeout and memory for better performance
+  timeout = 60
+  memory_size = 512
+  
   # Resource ARNs
   s3_bucket_arn = module.data_bucket.bucket_arn
   opensearch_domain_arn = module.opensearch.domain_arn
@@ -77,7 +81,7 @@ module "lambda" {
   # Environment variables
   environment_variables = {
     OPENSEARCH_ENDPOINT = module.opensearch.domain_endpoint
-    OPENSEARCH_INDEX    = "book-embeddings"
+    OPENSEARCH_INDEX    = "book-summaries"
     BEDROCK_MODEL_ID    = "amazon.titan-embed-text-v1"
     LOG_LEVEL           = "INFO"
   }

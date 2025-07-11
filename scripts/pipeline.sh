@@ -36,15 +36,15 @@ echo ""
 echo "📚 Step 1: Uploading books from Project Gutenberg..."
 ./src/scripts/upload_books.sh
 
-# Step 2: Generate embeddings
+# Step 2: Generate book summaries
 echo ""
-echo "🧠 Step 2: Generating embeddings..."
-./src/scripts/generate_embeddings.sh
+echo "📖 Step 2: Generating book-level summaries..."
+BUCKET_NAME="$BUCKET_NAME" ./src/scripts/generate_book_summaries.sh
 
-# Step 3: Load to OpenSearch via Lambda
+# Step 3: Load book summaries to OpenSearch
 echo ""
-echo "🔍 Step 3: Loading embeddings to OpenSearch via Lambda..."
-python src/scripts/load_embeddings_via_lambda.py --bucket "$BUCKET_NAME" --profile caylent-dev-test
+echo "🔍 Step 3: Loading book summaries to OpenSearch..."
+BUCKET_NAME="$BUCKET_NAME" ./src/scripts/load_book_summaries.sh
 
 echo ""
 echo "✅ Data pipeline completed successfully!"

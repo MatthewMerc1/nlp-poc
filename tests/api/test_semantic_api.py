@@ -67,11 +67,9 @@ def test_semantic_search(api_url, api_key, query, size=5):
             
             for i, result in enumerate(data['results'], 1):
                 print(f"\n{i}. Score: {result['score']:.4f}")
-                print(f"   Title: {result['title']}")
+                print(f"   Title: {result['book_title']}")
                 print(f"   Author: {result['author']}")
-                print(f"   Book ID: {result['book_id']}")
-                print(f"   Chapter: {result['chapter']}")
-                print(f"   Content: {result['content'][:200]}...")
+                print(f"   Summary: {result['book_summary'][:300]}...")
                 
         elif response.status_code == 403:
             print("Error: 403 Forbidden - Check your API key")
