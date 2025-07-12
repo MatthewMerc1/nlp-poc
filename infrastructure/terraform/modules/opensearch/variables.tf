@@ -95,6 +95,12 @@ variable "allowed_ipv6_addresses" {
   default     = []
 }
 
+variable "bastion_public_key" {
+  description = "Public SSH key for bastion host access"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
