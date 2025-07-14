@@ -66,7 +66,7 @@ make setup
 # Deploy infrastructure
 make deploy
 
-# Run complete data pipeline (book-level summaries)
+# Run complete data pipeline
 make pipeline
 
 # Test the API
@@ -95,7 +95,7 @@ terraform apply
 ./src/scripts/upload_books.sh
 ```
 
-#### 3. Generate Book-Level Summaries (NEW)
+#### 3. Generate Book-Level Summaries
 
 ```bash
 # Generate hierarchical book summaries and embeddings

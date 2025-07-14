@@ -10,11 +10,13 @@ help:
 	@echo "  deploy-lambda - Package and deploy Lambda function to AWS"
 	@echo "  pipeline   - Run the complete data pipeline"
 	@echo "  generate-summaries - Generate book summaries"
-	@echo "  load-summaries - Load book summaries to OpenSearch"
+	@echo "  load-summaries - Load book summaries to OpenSearch (via Lambda)"
 	@echo "  load-summaries-direct - Load summaries directly (bypasses Lambda)"
+	@echo "  bulk-index-summaries - Bulk index summaries to OpenSearch (direct)"
 	@echo "  purge-index - Purge current OpenSearch index"
 	@echo "  check-index - Check index status"
 	@echo "  test       - Run API tests"
+	@echo "  test-processing - Test book processing"
 	@echo "  teardown   - Tear down infrastructure"
 	@echo "  clean      - Clean up generated files"
 	@echo ""
@@ -56,7 +58,7 @@ generate-summaries:
 	@echo "Generating book summaries..."
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	python ../../../../src/scripts/generate_book_summaries.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test
+	python ../../../../src/scripts/generate_book_summaries.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test --max-workers 4 --batch-size 50
 
 # Load book summaries to OpenSearch
 load-summaries:
@@ -73,7 +75,15 @@ load-summaries-direct:
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
 	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
-	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test
+	python ../../../../src/scripts/bulk_index_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test --batch-size 100
+
+# Bulk index summaries to OpenSearch
+bulk-index-summaries:
+	@echo "Bulk indexing summaries to OpenSearch..."
+	@cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	python ../../../../src/scripts/bulk_index_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test --batch-size 100
 
 # Purge current OpenSearch index
 purge-index:
@@ -94,6 +104,13 @@ check-index:
 test:
 	@echo "Running API tests..."
 	@python tests/api/test_api.py "wonderland" multi 3
+
+# Test processing
+test-processing:
+	@echo "Testing book processing..."
+	@cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	python ../../../../src/scripts/test_processing.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test --max-books 3 --max-workers 2
 
 # Tear down infrastructure
 teardown:
@@ -145,7 +162,7 @@ local-load-summaries:
 	@./scripts/opensearch_local_access.sh && \
 	cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "localhost:8443" --profile caylent-dev-test
+	python ../../../../src/scripts/bulk_index_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "localhost:8443" --profile caylent-dev-test --batch-size 100
 
 local-generate-summaries:
 	@echo "Generating summaries with local access..."

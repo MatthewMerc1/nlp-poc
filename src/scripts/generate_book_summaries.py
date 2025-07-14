@@ -1,25 +1,41 @@
 #!/usr/bin/env python3
 """
-Enhanced script to generate book-level summaries and embeddings for improved search accuracy.
-This version creates longer, more detailed summaries with better semantic content.
+Parallel book summary generator with bulk indexing for scalability.
+This version processes multiple books in parallel and uses bulk indexing for OpenSearch.
 """
 
 import boto3
 import json
 import os
 import re
-from typing import List, Dict, Tuple
 import time
+import logging
+from typing import List, Dict, Tuple, Optional
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from botocore.exceptions import ClientError
+from opensearchpy import OpenSearch
+from opensearchpy.helpers import bulk
+import argparse
+import pickle
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(processName)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class BookSummaryGenerator:
     def __init__(self, bucket_name: str, aws_profile: str = None, 
                  embedding_model_id: str = "amazon.titan-embed-text-v1",
-                 summary_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"):
+                 summary_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0",
+                 max_workers: int = 4):
         """Initialize the book summary generator."""
         self.bucket_name = bucket_name
         self.embedding_model_id = embedding_model_id
         self.summary_model_id = summary_model_id
+        self.max_workers = max_workers
         
         # Initialize AWS clients
         if aws_profile:
@@ -41,17 +57,17 @@ class BookSummaryGenerator:
             if 'Contents' in response:
                 return [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.txt')]
             else:
-                print("No books found in S3 bucket")
+                logger.info("No books found in S3 bucket")
                 return []
                 
         except ClientError as e:
-            print(f"Error listing books: {e}")
+            logger.error(f"Error listing books: {e}")
             return []
     
     def download_book_from_s3(self, s3_key: str) -> str:
         """Download a book from S3 and return its content."""
         try:
-            print(f"Downloading {s3_key} from S3...")
+            logger.info(f"Downloading {s3_key} from S3...")
             
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name,
@@ -59,12 +75,12 @@ class BookSummaryGenerator:
             )
             
             content = response['Body'].read().decode('utf-8')
-            print(f"Downloaded {len(content)} characters from {s3_key}")
+            logger.info(f"Downloaded {len(content)} characters from {s3_key}")
             
             return content
             
         except ClientError as e:
-            print(f"Error downloading {s3_key}: {e}")
+            logger.error(f"Error downloading {s3_key}: {e}")
             return None
     
     def clean_text(self, text: str) -> str:
@@ -152,7 +168,7 @@ Detailed summary:"""
 
             request_body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 600,  # Increased from 300
+                "max_tokens": 600,
                 "messages": [
                     {
                         "role": "user",
@@ -172,7 +188,7 @@ Detailed summary:"""
             return summary
             
         except ClientError as e:
-            print(f"Error generating chunk summary: {e}")
+            logger.error(f"Error generating chunk summary: {e}")
             return None
     
     def generate_book_summary(self, chunk_summaries: List[str], book_title: str, author: str) -> Dict[str, str]:
@@ -199,82 +215,111 @@ Section summaries:
 
 Comprehensive plot summary:"""
 
+            plot_request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 800,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": plot_prompt
+                    }
+                ]
+            }
+            
+            plot_response = self.bedrock_client.invoke_model(
+                modelId=self.summary_model_id,
+                body=json.dumps(plot_request_body)
+            )
+            
+            plot_response_body = json.loads(plot_response['body'].read())
+            plot_summary = plot_response_body['content'][0]['text'].strip()
+            
             # Generate thematic analysis
-            theme_prompt = f"""Based on these section summaries from "{book_title}" by {author}, 
-analyze the major themes, motifs, and literary elements of this book. Include:
+            thematic_prompt = f"""Based on these section summaries from "{book_title}" by {author}, 
+analyze the major themes and motifs of this work. Consider:
 
-1. Primary themes and their development throughout the story
-2. Character motivations and psychological elements
-3. Symbolism and allegorical meanings
-4. Social commentary or philosophical ideas
-5. Literary techniques and style
-6. Historical or cultural significance
+1. Central themes and their development throughout the story
+2. Symbolic elements and their meanings
+3. Social, political, or philosophical commentary
+4. Character motivations and their thematic significance
+5. The author's message or worldview
+6. Historical or cultural context that shapes the themes
 
-Write a detailed thematic analysis that explores the deeper meaning and significance of the work.
-Aim for 6-10 sentences that capture the intellectual and artistic depth of the book.
+Write a detailed thematic analysis that explores the deeper meanings and significance of this work.
 
 Section summaries:
 {combined_summaries}
 
 Thematic analysis:"""
 
-            # Generate character-focused summary
+            thematic_request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 600,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": thematic_prompt
+                    }
+                ]
+            }
+            
+            thematic_response = self.bedrock_client.invoke_model(
+                modelId=self.summary_model_id,
+                body=json.dumps(thematic_request_body)
+            )
+            
+            thematic_response_body = json.loads(thematic_response['body'].read())
+            thematic_analysis = thematic_response_body['content'][0]['text'].strip()
+            
+            # Generate character summary
             character_prompt = f"""Based on these section summaries from "{book_title}" by {author}, 
-create a character-focused summary that highlights:
+provide a comprehensive character analysis that includes:
 
-1. Main characters and their personalities
+1. Main characters and their key traits
 2. Character relationships and dynamics
-3. Character development and growth
-4. Motivations and conflicts
-5. Supporting characters and their roles
-6. Character-driven plot elements
+3. Character development and arcs throughout the story
+4. Supporting characters and their roles
+5. Character motivations and conflicts
+6. How characters embody or challenge themes
 
-Write a detailed character analysis that shows how characters drive the story and relate to each other.
-Aim for 6-10 sentences that capture the human elements and relationships in the book.
+Write a detailed character summary that helps readers understand the people in this story.
 
 Section summaries:
 {combined_summaries}
 
-Character-focused summary:"""
+Character summary:"""
 
-            summaries = {}
+            character_request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 600,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": character_prompt
+                    }
+                ]
+            }
             
-            # Generate all three types of summaries
-            for summary_type, prompt in [
-                ("plot_summary", plot_prompt),
-                ("thematic_analysis", theme_prompt),
-                ("character_summary", character_prompt)
-            ]:
-                request_body = {
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 800,  # Increased token limit
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ]
-                }
-                
-                response = self.bedrock_client.invoke_model(
-                    modelId=self.summary_model_id,
-                    body=json.dumps(request_body)
-                )
-                
-                response_body = json.loads(response['body'].read())
-                summaries[summary_type] = response_body['content'][0]['text'].strip()
-                
-                # Rate limiting
-                time.sleep(1)
+            character_response = self.bedrock_client.invoke_model(
+                modelId=self.summary_model_id,
+                body=json.dumps(character_request_body)
+            )
             
-            return summaries
+            character_response_body = json.loads(character_response['body'].read())
+            character_summary = character_response_body['content'][0]['text'].strip()
+            
+            return {
+                'plot_summary': plot_summary,
+                'thematic_analysis': thematic_analysis,
+                'character_summary': character_summary
+            }
             
         except ClientError as e:
-            print(f"Error generating book summaries: {e}")
+            logger.error(f"Error generating book summary: {e}")
             return None
     
     def generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding for text using Bedrock."""
+        """Generate embedding using Amazon Bedrock."""
         try:
             request_body = {
                 "inputText": text
@@ -291,7 +336,7 @@ Character-focused summary:"""
             return embedding
             
         except ClientError as e:
-            print(f"Error generating embedding: {e}")
+            logger.error(f"Error generating embedding: {e}")
             return None
     
     def extract_author_from_text(self, text: str) -> str:
@@ -309,167 +354,280 @@ Character-focused summary:"""
         
         return "Unknown Author"
     
-    def upload_book_summary_to_s3(self, book_title: str, book_data: Dict) -> bool:
-        """Upload book summary and embeddings to S3."""
-        try:
-            book_summary_data = {
-                "book_title": book_title,
-                "author": book_data.get('author', 'Unknown Author'),
-                "embedding_model_id": self.embedding_model_id,
-                "summary_model_id": self.summary_model_id,
-                "plot_summary": book_data.get('plot_summary', ''),
-                "thematic_analysis": book_data.get('thematic_analysis', ''),
-                "character_summary": book_data.get('character_summary', ''),
-                "combined_summary": book_data.get('combined_summary', ''),
-                "plot_embedding": book_data.get('plot_embedding', []),
-                "thematic_embedding": book_data.get('thematic_embedding', []),
-                "character_embedding": book_data.get('character_embedding', []),
-                "combined_embedding": book_data.get('combined_embedding', []),
-                "total_chunks": book_data.get('total_chunks', 0),
-                "chunk_summaries": book_data.get('chunk_summaries', []),
-                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
-            safe_title = re.sub(r'[^\w\s-]', '', book_title).strip()
-            safe_title = re.sub(r'[-\s]+', '-', safe_title)
-            s3_key = f"book-summaries/{safe_title}-summary.json"
-            
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=s3_key,
-                Body=json.dumps(book_summary_data, indent=2),
-                ContentType='application/json',
-                ServerSideEncryption='AES256'
-            )
-            
-            print(f"Uploaded book summary to s3://{self.bucket_name}/{s3_key}")
-            return True
-            
-        except ClientError as e:
-            print(f"Error uploading book summary: {e}")
-            return False
-    
-    def process_book(self, s3_key: str, chunk_size: int = 8000, overlap: int = 500) -> bool:
-        """Process a single book with summarization."""
+    def process_single_book(self, s3_key: str, chunk_size: int = 8000, overlap: int = 500) -> Optional[Dict]:
+        """Process a single book and return the book data for bulk indexing."""
         book_title = os.path.basename(s3_key).replace('.txt', '')
         
-        print(f"\nProcessing book with summarization: {book_title}")
-        print("=" * 60)
+        logger.info(f"Processing book: {book_title}")
         
-        # Download and clean book
-        text_content = self.download_book_from_s3(s3_key)
-        if not text_content:
-            return False
-        
-        cleaned_text = self.clean_text(text_content)
-        print(f"Cleaned text length: {len(cleaned_text)} characters")
-        
-        author = self.extract_author_from_text(cleaned_text)
-        print(f"Extracted author: {author}")
-        
-        # Generate chunk summaries
-        chunks = self.chunk_text_large(cleaned_text, chunk_size, overlap)
-        print(f"Created {len(chunks)} large text chunks")
-        
-        chunk_summaries = []
-        for i, chunk in enumerate(chunks):
-            print(f"Generating summary for chunk {i+1}/{len(chunks)}...")
+        try:
+            # Download and clean book
+            text_content = self.download_book_from_s3(s3_key)
+            if not text_content:
+                return None
             
-            summary = self.generate_chunk_summary(chunk, i+1, len(chunks))
-            if summary:
-                chunk_summaries.append(summary)
+            cleaned_text = self.clean_text(text_content)
+            logger.info(f"Cleaned text length: {len(cleaned_text)} characters")
             
-            time.sleep(0.5)
-        
-        print(f"Generated {len(chunk_summaries)} chunk summaries")
-        
-        # Generate multiple types of book summaries
-        print("Generating book summaries...")
-        book_summaries = self.generate_book_summary(chunk_summaries, book_title, author)
-        if not book_summaries:
-            print("Failed to generate book summaries")
-            return False
-        
-        # Create combined summary for primary embedding
-        combined_summary = f"{book_summaries['plot_summary']}\n\n{book_summaries['thematic_analysis']}\n\n{book_summaries['character_summary']}"
-        
-        # Generate embeddings for each summary type
-        print("Generating multiple embeddings...")
-        embeddings = {}
-        
-        for summary_type, summary_text in book_summaries.items():
-            print(f"Summary type: {summary_type}, text (first 100 chars): {summary_text[:100]}")
-            embedding = self.generate_embedding(summary_text)
-            if embedding:
-                print(f"Embedding for {summary_type} (first 5 values): {embedding[:5]}")
-                embeddings[f"{summary_type}_embedding"] = embedding
+            author = self.extract_author_from_text(cleaned_text)
+            logger.info(f"Extracted author: {author}")
+            
+            # Generate chunk summaries
+            chunks = self.chunk_text_large(cleaned_text, chunk_size, overlap)
+            logger.info(f"Created {len(chunks)} large text chunks")
+            
+            chunk_summaries = []
+            for i, chunk in enumerate(chunks):
+                logger.info(f"Generating summary for chunk {i+1}/{len(chunks)}...")
+                
+                summary = self.generate_chunk_summary(chunk, i+1, len(chunks))
+                if summary:
+                    chunk_summaries.append(summary)
+                
+                time.sleep(0.5)  # Rate limiting
+            
+            logger.info(f"Generated {len(chunk_summaries)} chunk summaries")
+            
+            # Generate multiple types of book summaries
+            logger.info("Generating book summaries...")
+            book_summaries = self.generate_book_summary(chunk_summaries, book_title, author)
+            if not book_summaries:
+                logger.error("Failed to generate book summaries")
+                return None
+            
+            # Create combined summary for primary embedding
+            combined_summary = f"{book_summaries['plot_summary']}\n\n{book_summaries['thematic_analysis']}\n\n{book_summaries['character_summary']}"
+            
+            # Generate embeddings for each summary type
+            logger.info("Generating multiple embeddings...")
+            embeddings = {}
+            
+            for summary_type, summary_text in book_summaries.items():
+                logger.info(f"Generating embedding for {summary_type}")
+                embedding = self.generate_embedding(summary_text)
+                if embedding:
+                    embeddings[f"{summary_type}_embedding"] = embedding
+                else:
+                    logger.error(f"Failed to generate embedding for {summary_type}")
+                time.sleep(0.5)  # Rate limiting
+            
+            # Generate combined embedding
+            logger.info("Generating combined embedding...")
+            combined_embedding = self.generate_embedding(combined_summary)
+            if combined_embedding:
+                embeddings["combined_embedding"] = combined_embedding
             else:
-                print(f"Embedding for {summary_type} is None or empty!")
-            time.sleep(0.5)
-        
-        # Generate combined embedding
-        print("Generating combined embedding...")
-        print(f"Combined summary (first 100 chars): {combined_summary[:100]}")
-        combined_embedding = self.generate_embedding(combined_summary)
-        if combined_embedding:
-            print(f"Combined embedding (first 5 values): {combined_embedding[:5]}")
-            embeddings["combined_embedding"] = combined_embedding
-        else:
-            print("Combined embedding is None or empty!")
-        
-        # Prepare book data
-        book_data = {
-            'author': author,
-            'plot_summary': book_summaries['plot_summary'],
-            'thematic_analysis': book_summaries['thematic_analysis'],
-            'character_summary': book_summaries['character_summary'],
-            'combined_summary': combined_summary,
-            'total_chunks': len(chunks),
-            'chunk_summaries': chunk_summaries,
-            **embeddings
-        }
-        # Map embedding keys to expected names for upload
-        book_data['plot_embedding'] = embeddings.get('plot_summary_embedding', [])
-        book_data['thematic_embedding'] = embeddings.get('thematic_analysis_embedding', [])
-        book_data['character_embedding'] = embeddings.get('character_summary_embedding', [])
-        book_data['combined_embedding'] = embeddings.get('combined_embedding', [])
-        # Upload book summary
-        success = self.upload_book_summary_to_s3(book_title, book_data)
-        
-        return success
+                logger.error("Failed to generate combined embedding")
+            
+            # Prepare book data for OpenSearch
+            book_data = {
+                'book_title': book_title,
+                'author': author,
+                'plot_summary': book_summaries['plot_summary'],
+                'thematic_analysis': book_summaries['thematic_analysis'],
+                'character_summary': book_summaries['character_summary'],
+                'combined_summary': combined_summary,
+                'total_chunks': len(chunks),
+                'chunk_summaries': chunk_summaries,
+                'plot_embedding': embeddings.get('plot_summary_embedding', []),
+                'thematic_embedding': embeddings.get('thematic_analysis_embedding', []),
+                'character_embedding': embeddings.get('character_summary_embedding', []),
+                'combined_embedding': embeddings.get('combined_embedding', []),
+                'embedding_model_id': self.embedding_model_id,
+                'summary_model_id': self.summary_model_id,
+                'generated_at': time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            logger.info(f"Successfully processed book: {book_title}")
+            return book_data
+            
+        except Exception as e:
+            logger.error(f"Error processing book {book_title}: {e}")
+            return None
     
-    def process_all_books(self, chunk_size: int = 8000, overlap: int = 500, max_books: int = None):
-        """Process all books with summarization, up to max_books if specified."""
-        print(f"Starting book summary generation for books in bucket: {self.bucket_name}")
-        print(f"Using embedding model: {self.embedding_model_id}")
-        print(f"Using summary model: {self.summary_model_id}")
-        print(f"Chunk size: {chunk_size}, Overlap: {overlap}")
-        print("=" * 70)
+    def process_books_parallel(self, book_keys: List[str], chunk_size: int = 8000, 
+                             overlap: int = 500, batch_size: int = 100) -> List[Dict]:
+        """Process books and return results for bulk indexing."""
+        logger.info(f"Starting processing of {len(book_keys)} books with {self.max_workers} workers")
         
+        successful_books = []
+        failed_books = []
+        
+        # Process books
+        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all book processing tasks
+            future_to_book = {
+                executor.submit(self.process_single_book, book_key, chunk_size, overlap): book_key 
+                for book_key in book_keys
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_book):
+                book_key = future_to_book[future]
+                book_title = os.path.basename(book_key).replace('.txt', '')
+                
+                try:
+                    book_data = future.result()
+                    if book_data:
+                        successful_books.append(book_data)
+                        logger.info(f"✓ Completed: {book_title}")
+                    else:
+                        failed_books.append(book_key)
+                        logger.error(f"✗ Failed: {book_title}")
+                except Exception as e:
+                    failed_books.append(book_key)
+                    logger.error(f"✗ Exception processing {book_title}: {e}")
+        
+        logger.info(f"Processing complete!")
+        logger.info(f"Successful: {len(successful_books)} books")
+        logger.info(f"Failed: {len(failed_books)} books")
+        
+        if failed_books:
+            logger.info("Failed books:")
+            for book_key in failed_books:
+                logger.info(f"  - {os.path.basename(book_key)}")
+        
+        return successful_books
+    
+    def bulk_index_to_opensearch(self, books_data: List[Dict], opensearch_endpoint: str, 
+                                index_name: str = "book-summaries") -> bool:
+        """Bulk index books to OpenSearch using the bulk API."""
+        try:
+            logger.info(f"Bulk indexing {len(books_data)} books to OpenSearch...")
+            
+            # Create OpenSearch client
+            client = OpenSearch(
+                hosts=[{'host': opensearch_endpoint.replace('https://', ''), 'port': 443}],
+                http_auth=('admin', 'admin'),  # Replace with your auth
+                use_ssl=True,
+                verify_certs=False,
+                timeout=30
+            )
+            
+            # Prepare documents for bulk indexing
+            def generate_documents():
+                for book_data in books_data:
+                    # Create a unique ID for the book
+                    book_id = re.sub(r'[^\w\s-]', '', book_data['book_title']).strip()
+                    book_id = re.sub(r'[-\s]+', '-', book_id).lower()
+                    
+                    yield {
+                        "_index": index_name,
+                        "_id": book_id,
+                        "_source": book_data
+                    }
+            
+            # Perform bulk indexing
+            success_count, errors = bulk(client, generate_documents(), chunk_size=100, request_timeout=60)
+            
+            logger.info(f"Bulk indexing complete!")
+            logger.info(f"Successfully indexed: {success_count} documents")
+            
+            if errors:
+                logger.error(f"Errors during bulk indexing: {len(errors)}")
+                for error in errors[:5]:  # Show first 5 errors
+                    logger.error(f"  - {error}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error during bulk indexing: {e}")
+            return False
+    
+    def save_checkpoint(self, processed_books: List[str], checkpoint_file: str = "processed_books.pkl"):
+        """Save checkpoint of processed books."""
+        try:
+            with open(checkpoint_file, 'wb') as f:
+                pickle.dump(processed_books, f)
+            logger.info(f"Checkpoint saved: {len(processed_books)} books")
+        except Exception as e:
+            logger.error(f"Error saving checkpoint: {e}")
+    
+    def load_checkpoint(self, checkpoint_file: str = "processed_books.pkl") -> List[str]:
+        """Load checkpoint of processed books."""
+        try:
+            if os.path.exists(checkpoint_file):
+                with open(checkpoint_file, 'rb') as f:
+                    processed_books = pickle.load(f)
+                logger.info(f"Checkpoint loaded: {len(processed_books)} books")
+                return processed_books
+            else:
+                logger.info("No checkpoint file found")
+                return []
+        except Exception as e:
+            logger.error(f"Error loading checkpoint: {e}")
+            return []
+    
+    def process_all_books_scalable(self, chunk_size: int = 8000, overlap: int = 500, 
+                                 max_books: int = None, batch_size: int = 100,
+                                 opensearch_endpoint: str = None, 
+                                 use_checkpoint: bool = True) -> bool:
+        """Process all books with scalable processing and bulk indexing."""
+        logger.info(f"Starting scalable book processing for bucket: {self.bucket_name}")
+        logger.info(f"Max workers: {self.max_workers}")
+        logger.info(f"Batch size: {batch_size}")
+        logger.info("=" * 70)
+        
+        # Get all book keys
         book_keys = self.list_books_in_s3()
         if not book_keys:
-            print("No books found to process")
-            return
+            logger.error("No books found to process")
+            return False
         
-        print(f"Found {len(book_keys)} books to process")
+        logger.info(f"Found {len(book_keys)} books to process")
         
+        # Apply max_books limit
         if max_books is not None:
             book_keys = book_keys[:max_books]
-            print(f"Limiting to {max_books} books")
+            logger.info(f"Limiting to {max_books} books")
         
-        successful_books = 0
-        for book_key in book_keys:
-            if self.process_book(book_key, chunk_size, overlap):
-                successful_books += 1
-            print("\n" + "-" * 50 + "\n")
+        # Load checkpoint if enabled
+        processed_books = []
+        if use_checkpoint:
+            processed_books = self.load_checkpoint()
+            # Filter out already processed books
+            book_keys = [key for key in book_keys if key not in processed_books]
+            logger.info(f"After checkpoint: {len(book_keys)} books remaining")
         
-        print(f"Processing complete! Successfully processed {successful_books}/{len(book_keys)} books")
+        if not book_keys:
+            logger.info("No new books to process")
+            return True
+        
+        # Process books in batches
+        all_successful_books = []
+        for i in range(0, len(book_keys), batch_size):
+            batch_keys = book_keys[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (len(book_keys) + batch_size - 1) // batch_size
+            
+            logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch_keys)} books)")
+            
+            # Process batch
+            batch_results = self.process_books_parallel(batch_keys, chunk_size, overlap, batch_size)
+            all_successful_books.extend(batch_results)
+            
+            # Update checkpoint
+            if use_checkpoint:
+                processed_books.extend(batch_keys)
+                self.save_checkpoint(processed_books)
+            
+            # Bulk index to OpenSearch if endpoint provided
+            if opensearch_endpoint and batch_results:
+                logger.info(f"Bulk indexing batch {batch_num} to OpenSearch...")
+                success = self.bulk_index_to_opensearch(batch_results, opensearch_endpoint)
+                if not success:
+                    logger.error(f"Failed to bulk index batch {batch_num}")
+            
+            logger.info(f"Batch {batch_num} complete. Total processed: {len(all_successful_books)}")
+        
+        logger.info(f"Scalable processing complete!")
+        logger.info(f"Total successful books: {len(all_successful_books)}")
+        
+        return True
 
 def main():
-    """Main function to run the enhanced book summary generator."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Generate book-level summaries for improved search accuracy')
+    """Main function to run the scalable book summary generator."""
+    parser = argparse.ArgumentParser(description='Generate book summaries with processing and bulk indexing')
     parser.add_argument('--bucket', required=True, help='S3 bucket name')
     parser.add_argument('--profile', help='AWS profile name')
     parser.add_argument('--embedding-model', default='amazon.titan-embed-text-v1', 
@@ -480,12 +638,41 @@ def main():
                        help='Size of text chunks for summarization (default: 8000)')
     parser.add_argument('--overlap', type=int, default=500, 
                        help='Overlap between chunks (default: 500)')
-    parser.add_argument('--max-books', type=int, default=None, help='Maximum number of books to summarize (default: all)')
+    parser.add_argument('--max-books', type=int, default=None, 
+                       help='Maximum number of books to process (default: all)')
+    parser.add_argument('--max-workers', type=int, default=4, 
+                       help='Maximum number of parallel workers (default: 4)')
+    parser.add_argument('--batch-size', type=int, default=100, 
+                       help='Batch size for processing (default: 100)')
+    parser.add_argument('--opensearch-endpoint', 
+                       help='OpenSearch endpoint for bulk indexing')
+    parser.add_argument('--no-checkpoint', action='store_true', 
+                       help='Disable checkpointing')
     
     args = parser.parse_args()
     
-    generator = BookSummaryGenerator(args.bucket, args.profile, args.embedding_model, args.summary_model)
-    generator.process_all_books(args.chunk_size, args.overlap, args.max_books)
+    generator = BookSummaryGenerator(
+        args.bucket, 
+        args.profile, 
+        args.embedding_model, 
+        args.summary_model,
+        args.max_workers
+    )
+    
+    success = generator.process_all_books_scalable(
+        args.chunk_size,
+        args.overlap,
+        args.max_books,
+        args.batch_size,
+        args.opensearch_endpoint,
+        not args.no_checkpoint
+    )
+    
+    if success:
+        logger.info("Scalable book processing completed successfully!")
+    else:
+        logger.error("Scalable book processing failed!")
+        exit(1)
 
 if __name__ == "__main__":
     main() 
