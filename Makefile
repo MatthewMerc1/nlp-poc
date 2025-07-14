@@ -1,4 +1,4 @@
-.PHONY: help setup deploy deploy-full package deploy-lambda pipeline test teardown clean
+.PHONY: help setup deploy deploy-full package deploy-lambda pipeline test teardown clean purge-index local-setup local-pipeline local-load-summaries local-generate-summaries local-check-index local-stop local-purge-index
 
 # Default target
 help:
@@ -9,12 +9,23 @@ help:
 	@echo "  package    - Package Lambda function"
 	@echo "  deploy-lambda - Package and deploy Lambda function to AWS"
 	@echo "  pipeline   - Run the complete data pipeline"
-	@echo "  generate-summaries - Generate book-level summaries"
+	@echo "  generate-summaries - Generate book summaries"
 	@echo "  load-summaries - Load book summaries to OpenSearch"
-	@echo "  load-embeddings - Load embeddings to OpenSearch via Lambda (legacy)"
+	@echo "  load-summaries-direct - Load summaries directly (bypasses Lambda)"
+	@echo "  purge-index - Purge current OpenSearch index"
+	@echo "  check-index - Check index status"
 	@echo "  test       - Run API tests"
 	@echo "  teardown   - Tear down infrastructure"
 	@echo "  clean      - Clean up generated files"
+	@echo ""
+	@echo "Local Development Commands:"
+	@echo "  local-setup - Set up local OpenSearch access"
+	@echo "  local-pipeline - Run pipeline with local OpenSearch access"
+	@echo "  local-generate-summaries - Generate summaries with local access"
+	@echo "  local-load-summaries - Load summaries with local OpenSearch access"
+	@echo "  local-check-index - Check index status with local access"
+	@echo "  local-purge-index - Purge index with local OpenSearch access"
+	@echo "  local-stop - Stop local OpenSearch access (kill SSH tunnel)"
 
 # Set up development environment
 setup:
@@ -38,12 +49,14 @@ pipeline:
 	@echo "Running data pipeline..."
 	@./scripts/pipeline.sh
 
+
+
 # Generate book summaries
 generate-summaries:
 	@echo "Generating book summaries..."
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	BUCKET_NAME="$$BUCKET_NAME" ../../src/scripts/generate_book_summaries.sh
+	python ../../../../src/scripts/generate_book_summaries.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test
 
 # Load book summaries to OpenSearch
 load-summaries:
@@ -51,19 +64,36 @@ load-summaries:
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
 	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
-	BUCKET_NAME="$$BUCKET_NAME" OPENSEARCH_ENDPOINT="$$OPENSEARCH_ENDPOINT" ../../src/scripts/load_book_summaries.sh
+	cd ../../.. && \
+	python src/scripts/load_book_summaries_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test
 
-# Load embeddings to OpenSearch via Lambda (legacy)
-load-embeddings:
-	@echo "Loading embeddings to OpenSearch via Lambda..."
+# Load summaries directly to OpenSearch (bypasses Lambda)
+load-summaries-direct:
+	@echo "Loading summaries directly to OpenSearch..."
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	python ../../src/scripts/load_embeddings_via_lambda.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test
+
+# Purge current OpenSearch index
+purge-index:
+	@echo "Purging current OpenSearch index..."
+	@cd infrastructure/terraform/environments/dev && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	cd ../../.. && \
+	python src/scripts/purge_opensearch_direct.py --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test
+
+# Check index status
+check-index:
+	@echo "Checking index status..."
+	@cd infrastructure/terraform/environments/dev && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test --check-only
 
 # Run tests
 test:
-	@echo "Running book-level API tests..."
-	@python tests/api/test_book_search.py "What is the meaning of life?"
+	@echo "Running API tests..."
+	@python tests/api/test_api.py "wonderland" multi 3
 
 # Tear down infrastructure
 teardown:
@@ -93,9 +123,51 @@ deploy-lambda:
 		--profile caylent-dev-test
 	@echo "Lambda function deployed successfully!"
 
+
 # Show project status
 status:
 	@echo "Project Status:"
 	@echo "  Virtual environment: $(shell [ -d "venv" ] && echo "✓ Created" || echo "✗ Not created")"
 	@echo "  Terraform state: $(shell [ -f "infrastructure/terraform/environments/dev/terraform.tfstate" ] && echo "✓ Deployed" || echo "✗ Not deployed")"
-	@echo "  Lambda package: $(shell [ -f "infrastructure/terraform/environments/dev/lambda_function.zip" ] && echo "✓ Packaged" || echo "✗ Not packaged")" 
+	@echo "  Lambda package: $(shell [ -f "infrastructure/terraform/environments/dev/lambda_function.zip" ] && echo "✓ Packaged" || echo "✗ Not packaged")"
+
+# Local Development Commands
+local-setup:
+	@echo "Setting up local OpenSearch access..."
+	@./scripts/opensearch_local_access.sh
+
+local-pipeline:
+	@echo "Running pipeline with local OpenSearch access..."
+	@./scripts/run_with_local_opensearch.sh "./scripts/pipeline.sh"
+
+local-load-summaries:
+	@echo "Loading summaries with local OpenSearch access..."
+	@./scripts/opensearch_local_access.sh && \
+	cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "localhost:8443" --profile caylent-dev-test
+
+local-generate-summaries:
+	@echo "Generating summaries with local access..."
+	@cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	cd ../../../.. && \
+	python src/scripts/generate_book_summaries.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test
+
+local-check-index:
+	@echo "Checking index status with local OpenSearch access..."
+	@./scripts/opensearch_local_access.sh && \
+	cd infrastructure/terraform/environments/dev && \
+	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --opensearch-endpoint "localhost:8443" --profile caylent-dev-test --check-only
+
+local-purge-index:
+	@echo "Purging index with local OpenSearch access..."
+	@./scripts/opensearch_local_access.sh && \
+	cd infrastructure/terraform/environments/dev && \
+	python ../../../../src/scripts/purge_opensearch_direct.py --opensearch-endpoint "localhost:8443" --profile caylent-dev-test
+
+local-stop:
+	@echo "Stopping local OpenSearch access..."
+	@./scripts/stop_opensearch_local_access.sh
+
+ 
