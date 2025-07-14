@@ -55,8 +55,12 @@ def test_book_processing(bucket_name: str, aws_profile: str = None,
     print("=" * 60)
     print(f"Total time: {processing_time:.2f} seconds")
     print(f"Books processed: {len(successful_books)}")
-    print(f"Average time per book: {processing_time / len(successful_books):.2f} seconds")
-    print(f"Processing rate: {len(successful_books) / processing_time:.2f} books/second")
+    if successful_books:
+        print(f"Average time per book: {processing_time / len(successful_books):.2f} seconds")
+        print(f"Processing rate: {len(successful_books) / processing_time:.2f} books/second")
+    else:
+        print("No books were processed successfully")
+        print("Processing rate: 0 books/second")
     
     if successful_books:
         print(f"\nSuccessfully processed books:")

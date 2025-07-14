@@ -11,7 +11,7 @@ import re
 import time
 import logging
 from typing import List, Dict, Tuple, Optional
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from botocore.exceptions import ClientError
 from opensearchpy import OpenSearch
 from opensearchpy.helpers import bulk
@@ -36,8 +36,9 @@ class BookSummaryGenerator:
         self.embedding_model_id = embedding_model_id
         self.summary_model_id = summary_model_id
         self.max_workers = max_workers
+        self.aws_profile = aws_profile
         
-        # Initialize AWS clients
+        # Initialize AWS clients for main process
         if aws_profile:
             session = boto3.Session(profile_name=aws_profile)
             self.s3_client = session.client('s3')
@@ -66,10 +67,14 @@ class BookSummaryGenerator:
     
     def download_book_from_s3(self, s3_key: str) -> str:
         """Download a book from S3 and return its content."""
+        return self._download_book_from_s3(self.s3_client, s3_key)
+    
+    def _download_book_from_s3(self, s3_client, s3_key: str) -> str:
+        """Download a book from S3 and return its content."""
         try:
             logger.info(f"Downloading {s3_key} from S3...")
             
-            response = self.s3_client.get_object(
+            response = s3_client.get_object(
                 Bucket=self.bucket_name,
                 Key=s3_key
             )
@@ -147,6 +152,10 @@ class BookSummaryGenerator:
     
     def generate_chunk_summary(self, chunk: str, chunk_index: int, total_chunks: int) -> str:
         """Generate a summary for a text chunk with more detail."""
+        return self._generate_chunk_summary(self.bedrock_client, chunk, chunk_index, total_chunks)
+    
+    def _generate_chunk_summary(self, bedrock_client, chunk: str, chunk_index: int, total_chunks: int) -> str:
+        """Generate a summary for a text chunk with more detail."""
         try:
             prompt = f"""You are analyzing section {chunk_index} of {total_chunks} from a book. 
 Please provide a detailed summary of this section that captures:
@@ -177,7 +186,7 @@ Detailed summary:"""
                 ]
             }
             
-            response = self.bedrock_client.invoke_model(
+            response = bedrock_client.invoke_model(
                 modelId=self.summary_model_id,
                 body=json.dumps(request_body)
             )
@@ -192,6 +201,10 @@ Detailed summary:"""
             return None
     
     def generate_book_summary(self, chunk_summaries: List[str], book_title: str, author: str) -> Dict[str, str]:
+        """Generate multiple types of book summaries for better semantic matching."""
+        return self._generate_book_summary(self.bedrock_client, chunk_summaries, book_title, author)
+    
+    def _generate_book_summary(self, bedrock_client, chunk_summaries: List[str], book_title: str, author: str) -> Dict[str, str]:
         """Generate multiple types of book summaries for better semantic matching."""
         try:
             combined_summaries = "\n\n".join(chunk_summaries)
@@ -226,7 +239,7 @@ Comprehensive plot summary:"""
                 ]
             }
             
-            plot_response = self.bedrock_client.invoke_model(
+            plot_response = bedrock_client.invoke_model(
                 modelId=self.summary_model_id,
                 body=json.dumps(plot_request_body)
             )
@@ -263,7 +276,7 @@ Thematic analysis:"""
                 ]
             }
             
-            thematic_response = self.bedrock_client.invoke_model(
+            thematic_response = bedrock_client.invoke_model(
                 modelId=self.summary_model_id,
                 body=json.dumps(thematic_request_body)
             )
@@ -300,7 +313,7 @@ Character summary:"""
                 ]
             }
             
-            character_response = self.bedrock_client.invoke_model(
+            character_response = bedrock_client.invoke_model(
                 modelId=self.summary_model_id,
                 body=json.dumps(character_request_body)
             )
@@ -320,12 +333,16 @@ Character summary:"""
     
     def generate_embedding(self, text: str) -> List[float]:
         """Generate embedding using Amazon Bedrock."""
+        return self._generate_embedding(self.bedrock_client, text)
+    
+    def _generate_embedding(self, bedrock_client, text: str) -> List[float]:
+        """Generate embedding using Amazon Bedrock."""
         try:
             request_body = {
                 "inputText": text
             }
             
-            response = self.bedrock_client.invoke_model(
+            response = bedrock_client.invoke_model(
                 modelId=self.embedding_model_id,
                 body=json.dumps(request_body)
             )
@@ -361,8 +378,17 @@ Character summary:"""
         logger.info(f"Processing book: {book_title}")
         
         try:
+            # Initialize AWS clients in this process (to avoid pickling issues)
+            if hasattr(self, 'aws_profile') and self.aws_profile:
+                session = boto3.Session(profile_name=self.aws_profile)
+                s3_client = session.client('s3')
+                bedrock_client = session.client('bedrock-runtime')
+            else:
+                s3_client = boto3.client('s3')
+                bedrock_client = boto3.client('bedrock-runtime')
+            
             # Download and clean book
-            text_content = self.download_book_from_s3(s3_key)
+            text_content = self._download_book_from_s3(s3_client, s3_key)
             if not text_content:
                 return None
             
@@ -380,7 +406,7 @@ Character summary:"""
             for i, chunk in enumerate(chunks):
                 logger.info(f"Generating summary for chunk {i+1}/{len(chunks)}...")
                 
-                summary = self.generate_chunk_summary(chunk, i+1, len(chunks))
+                summary = self._generate_chunk_summary(bedrock_client, chunk, i+1, len(chunks))
                 if summary:
                     chunk_summaries.append(summary)
                 
@@ -390,7 +416,7 @@ Character summary:"""
             
             # Generate multiple types of book summaries
             logger.info("Generating book summaries...")
-            book_summaries = self.generate_book_summary(chunk_summaries, book_title, author)
+            book_summaries = self._generate_book_summary(bedrock_client, chunk_summaries, book_title, author)
             if not book_summaries:
                 logger.error("Failed to generate book summaries")
                 return None
@@ -404,7 +430,7 @@ Character summary:"""
             
             for summary_type, summary_text in book_summaries.items():
                 logger.info(f"Generating embedding for {summary_type}")
-                embedding = self.generate_embedding(summary_text)
+                embedding = self._generate_embedding(bedrock_client, summary_text)
                 if embedding:
                     embeddings[f"{summary_type}_embedding"] = embedding
                 else:
@@ -413,7 +439,7 @@ Character summary:"""
             
             # Generate combined embedding
             logger.info("Generating combined embedding...")
-            combined_embedding = self.generate_embedding(combined_summary)
+            combined_embedding = self._generate_embedding(bedrock_client, combined_summary)
             if combined_embedding:
                 embeddings["combined_embedding"] = combined_embedding
             else:
@@ -454,7 +480,7 @@ Character summary:"""
         failed_books = []
         
         # Process books
-        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all book processing tasks
             future_to_book = {
                 executor.submit(self.process_single_book, book_key, chunk_size, overlap): book_key 
