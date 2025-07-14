@@ -52,6 +52,9 @@ module "opensearch" {
   allowed_ipv4_addresses = var.allowed_ipv4_addresses
   allowed_ipv6_addresses = var.allowed_ipv6_addresses
   
+  # Bastion configuration
+  bastion_public_key = var.bastion_public_key
+  
   tags = {
     Environment = "dev"
     Project     = "nlp-poc"

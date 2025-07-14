@@ -118,6 +118,7 @@ resource "aws_security_group" "opensearch" {
     protocol    = "tcp"
     cidr_blocks = concat(
       [aws_subnet.private.cidr_block],
+      [aws_subnet.public.cidr_block],
       var.allowed_ipv4_addresses
     )
     ipv6_cidr_blocks = var.allowed_ipv6_addresses
@@ -130,6 +131,7 @@ resource "aws_security_group" "opensearch" {
     protocol    = "tcp"
     cidr_blocks = concat(
       [aws_subnet.private.cidr_block],
+      [aws_subnet.public.cidr_block],
       var.allowed_ipv4_addresses
     )
     ipv6_cidr_blocks = var.allowed_ipv6_addresses
@@ -219,4 +221,77 @@ resource "aws_opensearch_domain" "main" {
   }
 
   tags = var.tags
+}
+
+# Bastion Host for SSH access to VPC
+resource "aws_security_group" "bastion" {
+  name        = "${var.domain_name}-bastion-sg"
+  description = "Security group for bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  # SSH access from allowed IPs
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ipv4_addresses
+    ipv6_cidr_blocks = var.allowed_ipv6_addresses
+  }
+
+  # All outbound traffic
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.domain_name}-bastion-sg"
+  })
+}
+
+# Key pair for SSH access
+resource "aws_key_pair" "bastion" {
+  key_name   = "${var.domain_name}-bastion-key"
+  public_key = var.bastion_public_key
+
+  tags = merge(var.tags, {
+    Name = "${var.domain_name}-bastion-key"
+  })
+}
+
+# Bastion host instance
+resource "aws_instance" "bastion" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.micro"
+  key_name              = aws_key_pair.bastion.key_name
+  vpc_security_group_ids = [aws_security_group.bastion.id]
+  subnet_id             = aws_subnet.public.id
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y curl wget
+              EOF
+
+  tags = merge(var.tags, {
+    Name = "${var.domain_name}-bastion"
+  })
+}
+
+# Data source for Amazon Linux 2 AMI
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 } 

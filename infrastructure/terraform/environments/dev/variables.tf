@@ -61,6 +61,12 @@ variable "lifecycle_rules" {
   default = []
 }
 
+variable "bastion_public_key" {
+  description = "Public SSH key for bastion host access"
+  type        = string
+  default     = ""
+}
+
 variable "alert_email_addresses" {
   description = "List of email addresses to receive monitoring alerts"
   type        = list(string)

@@ -1,54 +1,72 @@
 #!/bin/bash
 
-# Data pipeline orchestration script
+# Enhanced Pipeline Script
+# This script runs the complete enhanced pipeline for better search accuracy
+
 set -e
 
-echo "🔄 Starting NLP POC data pipeline..."
+echo "🚀 Enhanced NLP Pipeline - Better Search Accuracy"
+echo "=================================================="
+echo ""
 
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo "❌ Error: Virtual environment not found. Run './scripts/setup.sh' first."
+# Check if AWS credentials are available
+echo "Checking AWS credentials..."
+if ! aws sts get-caller-identity --profile caylent-dev-test >/dev/null 2>&1; then
+    echo "❌ AWS credentials not available or expired"
+    echo "Please run: aws sso login --profile caylent-dev-test"
     exit 1
 fi
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Check if infrastructure is deployed
-echo "🔍 Checking infrastructure status..."
-if [ ! -f "infrastructure/terraform/environments/dev/terraform.tfstate" ]; then
-    echo "❌ Error: Infrastructure not deployed. Run 'make deploy' first."
-    exit 1
-fi
-
-# Get bucket name from Terraform output
-BUCKET_NAME=$(cd infrastructure/terraform/environments/dev && terraform output -raw bucket_name 2>/dev/null)
-if [ -z "$BUCKET_NAME" ]; then
-    echo "❌ Error: Could not get bucket name from Terraform output."
-    echo "Please run 'make deploy' first to create the infrastructure."
-    exit 1
-fi
-
-echo "✅ Found S3 bucket: $BUCKET_NAME"
-
-# Step 1: Upload books
+echo "✅ AWS credentials available"
 echo ""
-echo "📚 Step 1: Uploading books from Project Gutenberg..."
-./src/scripts/upload_books.sh
 
-# Step 2: Generate book summaries
-echo ""
-echo "📖 Step 2: Generating book-level summaries..."
-BUCKET_NAME="$BUCKET_NAME" ./src/scripts/generate_book_summaries.sh
+# Step 1: Deploy enhanced Lambda function
+echo "Step 1: Deploying enhanced Lambda function..."
+echo "This will replace the current Lambda with the enhanced version"
+echo "Press Enter to continue or Ctrl+C to cancel..."
+read -r
 
-# Step 3: Load book summaries to OpenSearch
+make deploy-enhanced-lambda
+echo "✅ Enhanced Lambda function deployed"
 echo ""
-echo "🔍 Step 3: Loading book summaries to OpenSearch..."
-BUCKET_NAME="$BUCKET_NAME" ./src/scripts/load_book_summaries.sh
 
+# Step 2: Run the enhanced pipeline
+echo "Step 2: Running enhanced pipeline..."
+echo "This will:"
+echo "  - Purge the current OpenSearch index"
+echo "  - Generate enhanced book summaries (takes 10-15 minutes)"
+echo "  - Load enhanced summaries to OpenSearch"
 echo ""
-echo "✅ Data pipeline completed successfully!"
+echo "Press Enter to continue or Ctrl+C to cancel..."
+read -r
+
+make pipeline-enhanced
+echo "✅ Enhanced pipeline complete!"
 echo ""
-echo "Next steps:"
-echo "1. Run 'make test' to test the semantic search API"
-echo "2. Access OpenSearch Dashboard: $(cd infrastructure/terraform/environments/dev && terraform output -raw opensearch_dashboard_url 2>/dev/null || echo 'Run terraform output opensearch_dashboard_url')" 
+
+# Step 3: Test the enhanced system
+echo "Step 3: Testing enhanced search..."
+echo "Running enhanced API tests..."
+make test-enhanced
+echo "✅ Enhanced tests complete!"
+echo ""
+
+echo "🎉 Enhanced pipeline successfully completed!"
+echo ""
+echo "You can now test the improved search accuracy:"
+echo ""
+echo "  # Test with different strategies"
+echo "  python tests/api/test_enhanced_api.py 'wonderland' multi 3"
+echo "  python tests/api/test_enhanced_api.py 'detective mystery' plot 3"
+echo "  python tests/api/test_enhanced_api.py 'love story' thematic 3"
+echo ""
+echo "  # Compare strategies"
+echo "  python tests/api/test_enhanced_api.py --compare 'monster creation'"
+echo ""
+echo "  # Test accuracy improvements"
+echo "  python tests/api/test_enhanced_api.py --accuracy"
+echo ""
+echo "Expected improvements:"
+echo "  - Better score differentiation"
+echo "  - More relevant results"
+echo "  - Strategy-specific matching"
+echo "  - No more boilerplate text in summaries" 

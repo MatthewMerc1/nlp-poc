@@ -1,275 +1,380 @@
 #!/usr/bin/env python3
 """
-Script to load book summaries and embeddings into OpenSearch for book-level semantic search.
+Direct script to load book summaries into OpenSearch
+Avoids Lambda payload size limitations by loading directly
 """
 
-import boto3
 import json
+import logging
 import os
-import re
-from typing import List, Dict
+import sys
+import boto3
+import argparse
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
-from botocore.exceptions import ClientError
 
-class BookSummaryLoader:
-    def __init__(self, bucket_name: str, opensearch_endpoint: str, aws_profile: str = None):
-        """Initialize the book summary loader."""
-        self.bucket_name = bucket_name
-        self.opensearch_endpoint = opensearch_endpoint
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Constants
+OPENSEARCH_INDEX = "book-summaries"
+BEDROCK_MODEL_ID = "amazon.titan-embed-text-v1"
+
+def get_aws_auth(profile_name):
+    """Get AWS authentication for OpenSearch"""
+    try:
+        session = boto3.Session(profile_name=profile_name)
+        credentials = session.get_credentials()
+        awsauth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            session.region_name or 'us-east-1',
+            'es',
+            session_token=credentials.token
+        )
+        return awsauth
+    except Exception as e:
+        logger.error(f"Error getting AWS auth: {str(e)}")
+        raise
+
+def create_opensearch_client(endpoint, profile_name):
+    """Create OpenSearch client"""
+    try:
+        # Check if this is a local endpoint (for development)
+        is_local = endpoint.startswith('localhost') or endpoint.startswith('127.0.0.1')
         
-        # Initialize AWS clients
-        if aws_profile:
-            session = boto3.Session(profile_name=aws_profile)
-            self.s3_client = session.client('s3')
-        else:
-            self.s3_client = boto3.client('s3')
-        
-        # Initialize OpenSearch client
-        self.opensearch_client = self.create_opensearch_client(aws_profile)
-    
-    def create_opensearch_client(self, aws_profile: str = None):
-        """Create OpenSearch client with AWS authentication."""
-        try:
-            # Get AWS credentials
-            if aws_profile:
-                session = boto3.Session(profile_name=aws_profile)
-                credentials = session.get_credentials()
-            else:
-                session = boto3.Session()
-                credentials = session.get_credentials()
-            
-            awsauth = AWS4Auth(
-                credentials.access_key,
-                credentials.secret_key,
-                session.region_name or 'us-east-1',
-                'es',
-                session_token=credentials.token
-            )
-            
-            # Create OpenSearch client
-            host = self.opensearch_endpoint.replace('https://', '')
+        if is_local:
+            # For local development, use basic auth or no auth
+            logger.info(f"Connecting to local OpenSearch endpoint: {endpoint}")
             client = OpenSearch(
-                hosts=[{'host': host, 'port': 443}],
+                hosts=[{'host': endpoint.split(':')[0], 'port': int(endpoint.split(':')[1])}],
+                use_ssl=True,
+                verify_certs=False,  # Disable SSL verification for local development
+                connection_class=RequestsHttpConnection,
+                timeout=30,
+                max_retries=3,
+                retry_on_timeout=True,
+                retry_on_status=[429, 500, 502, 503, 504]
+            )
+        else:
+            # For AWS OpenSearch, use AWS auth
+            awsauth = get_aws_auth(profile_name)
+            client = OpenSearch(
+                hosts=[{'host': endpoint.replace('https://', ''), 'port': 443}],
                 http_auth=awsauth,
                 use_ssl=True,
                 verify_certs=True,
-                connection_class=RequestsHttpConnection
+                connection_class=RequestsHttpConnection,
+                timeout=30,
+                max_retries=3,
+                retry_on_timeout=True,
+                retry_on_status=[429, 500, 502, 503, 504]
             )
+        
+        return client
+    except Exception as e:
+        logger.error(f"Error creating OpenSearch client: {str(e)}")
+        raise
+
+def create_index_if_not_exists(client):
+    """Create the OpenSearch index if it doesn't exist"""
+    try:
+        # Check if index exists
+        if not client.indices.exists(index=OPENSEARCH_INDEX):
+            logger.info(f"Creating index: {OPENSEARCH_INDEX}")
             
-            return client
-            
-        except Exception as e:
-            print(f"Error creating OpenSearch client: {e}")
-            raise
-    
-    def list_book_summaries_in_s3(self) -> List[str]:
-        """List all book summary files in the S3 bucket."""
-        try:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix='book-summaries/'
-            )
-            
-            if 'Contents' in response:
-                return [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('-summary.json')]
-            else:
-                print("No book summaries found in S3 bucket")
-                return []
-                
-        except ClientError as e:
-            print(f"Error listing book summaries: {e}")
-            return []
-    
-    def download_book_summary_from_s3(self, s3_key: str) -> Dict:
-        """Download a book summary from S3 and return its content."""
-        try:
-            print(f"Downloading {s3_key} from S3...")
-            
-            response = self.s3_client.get_object(
-                Bucket=self.bucket_name,
-                Key=s3_key
-            )
-            
-            content = response['Body'].read().decode('utf-8')
-            book_summary_data = json.loads(content)
-            
-            print(f"Downloaded book summary for: {book_summary_data.get('book_title', 'Unknown')}")
-            
-            return book_summary_data
-            
-        except ClientError as e:
-            print(f"Error downloading {s3_key}: {e}")
-            return None
-    
-    def create_book_index_if_not_exists(self):
-        """Create the OpenSearch index for book summaries if it doesn't exist."""
-        try:
-            index_name = "book-summaries"
-            
-            # Check if index exists
-            if not self.opensearch_client.indices.exists(index=index_name):
-                print(f"Creating index: {index_name}")
-                
-                # Index mapping for book-level vector search
-                index_mapping = {
-                    "settings": {
-                        "index": {
-                            "knn": True,
-                            "knn.space_type": "cosinesimil",
-                            "knn.algo_param.ef_search": 512,
-                            "knn.algo_param.ef_construction": 512,
-                            "knn.algo_param.m": 16,
-                            "number_of_shards": 5,
-                            "number_of_replicas": 1
-                        }
-                    },
-                    "mappings": {
-                        "properties": {
-                            "book_title": {"type": "text"},
-                            "author": {"type": "text"},
-                            "book_summary": {"type": "text"},
-                            "book_embedding": {
-                                "type": "knn_vector",
-                                "dimension": 1536,
-                                "method": {
-                                    "name": "hnsw",
-                                    "space_type": "cosinesimil",
-                                    "engine": "nmslib"
+            # Enhanced index mapping with multiple embedding fields
+            index_mapping = {
+                "settings": {
+                    "index": {
+                        "knn": True,
+                        "knn.space_type": "cosinesimil",
+                        "knn.algo_param.ef_search": 512,
+                        "knn.algo_param.ef_construction": 512,
+                        "knn.algo_param.m": 16,
+                        "number_of_shards": 5,
+                        "number_of_replicas": 1
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "book_title": {"type": "text"},
+                        "author": {"type": "text"},
+                        "plot_summary": {"type": "text"},
+                        "thematic_analysis": {"type": "text"},
+                        "character_summary": {"type": "text"},
+                        "combined_summary": {"type": "text"},
+                        "plot_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib",
+                                "parameters": {
+                                    "ef_construction": 512,
+                                    "m": 16
                                 }
-                            },
-                            "total_chunks": {"type": "integer"},
-                            "chunk_summaries": {"type": "text"},
-                            "embedding_model_id": {"type": "keyword"},
-                            "summary_model_id": {"type": "keyword"},
-                            "generated_at": {"type": "date"}
-                        }
+                            }
+                        },
+                        "thematic_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib",
+                                "parameters": {
+                                    "ef_construction": 512,
+                                    "m": 16
+                                }
+                            }
+                        },
+                        "character_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib",
+                                "parameters": {
+                                    "ef_construction": 512,
+                                    "m": 16
+                                }
+                            }
+                        },
+                        "combined_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib",
+                                "parameters": {
+                                    "ef_construction": 512,
+                                    "m": 16
+                                }
+                            }
+                        },
+                        "total_chunks": {"type": "integer"},
+                        "chunk_summaries": {"type": "text"},
+                        "embedding_model_id": {"type": "keyword"},
+                        "summary_model_id": {"type": "keyword"},
+                        "generated_at": {"type": "date"}
                     }
                 }
-                
-                self.opensearch_client.indices.create(
-                    index=index_name,
-                    body=index_mapping
-                )
-                print(f"Index {index_name} created successfully")
-            else:
-                print(f"Index {index_name} already exists")
-                
-        except Exception as e:
-            print(f"Error creating index: {e}")
-            raise
-    
-    def load_book_summary_to_opensearch(self, book_summary_data: Dict) -> bool:
-        """Load a single book summary into OpenSearch."""
-        try:
-            # Prepare the document
-            doc = {
-                "book_title": book_summary_data.get('book_title', ''),
-                "author": book_summary_data.get('author', ''),
-                "book_summary": book_summary_data.get('book_summary', ''),
-                "book_embedding": book_summary_data.get('book_embedding', []),
-                "total_chunks": book_summary_data.get('total_chunks', 0),
-                "chunk_summaries": "\n\n".join(book_summary_data.get('chunk_summaries', [])),
-                "embedding_model_id": book_summary_data.get('embedding_model_id', ''),
-                "summary_model_id": book_summary_data.get('summary_model_id', ''),
-                "generated_at": book_summary_data.get('generated_at', '')
             }
             
-            # Create a unique ID for the book
-            book_id = re.sub(r'[^\w\s-]', '', book_summary_data.get('book_title', '')).strip()
-            book_id = re.sub(r'[-\s]+', '-', book_id).lower()
+            client.indices.create(index=OPENSEARCH_INDEX, body=index_mapping)
+            logger.info(f"Index {OPENSEARCH_INDEX} created successfully")
+        else:
+            logger.info(f"Index {OPENSEARCH_INDEX} already exists")
             
-            # Index the document
-            response = self.opensearch_client.index(
-                index="book-summaries",
-                id=book_id,
-                body=doc,
-                refresh=True
-            )
-            
-            if response['result'] == 'created' or response['result'] == 'updated':
-                print(f"Successfully indexed book: {book_summary_data.get('book_title', '')}")
-                return True
-            else:
-                print(f"Failed to index book: {book_summary_data.get('book_title', '')}")
-                return False
-                
-        except Exception as e:
-            print(f"Error loading book summary to OpenSearch: {e}")
+    except Exception as e:
+        logger.error(f"Error creating index: {str(e)}")
+        raise
+
+def load_book_summary_to_opensearch(client, book_summary_data):
+    """Load book summary data into OpenSearch"""
+    try:
+        book_title = book_summary_data.get('book_title', 'Unknown')
+        author = book_summary_data.get('author', 'Unknown')
+        
+        logger.info(f"Loading book summary for: {book_title}")
+        
+        # Fix generated_at to ISO 8601 format if possible
+        generated_at = book_summary_data.get('generated_at', '')
+        if generated_at:
+            import datetime
+            try:
+                dt = datetime.datetime.strptime(generated_at, "%Y-%m-%d %H:%M:%S")
+                generated_at = dt.isoformat()
+            except Exception:
+                pass
+        
+        # Prepare document with all embedding types
+        doc = {
+            "book_title": book_title,
+            "author": author,
+            "plot_summary": book_summary_data.get('plot_summary', ''),
+            "thematic_analysis": book_summary_data.get('thematic_analysis', ''),
+            "character_summary": book_summary_data.get('character_summary', ''),
+            "combined_summary": book_summary_data.get('combined_summary', ''),
+            "plot_embedding": book_summary_data.get('plot_embedding', []),
+            "thematic_embedding": book_summary_data.get('thematic_embedding', []),
+            "character_embedding": book_summary_data.get('character_embedding', []),
+            "combined_embedding": book_summary_data.get('combined_embedding', []),
+            "total_chunks": book_summary_data.get('total_chunks', 0),
+            "chunk_summaries": "\n\n".join(book_summary_data.get('chunk_summaries', [])),
+            "embedding_model_id": book_summary_data.get('embedding_model_id', ''),
+            "summary_model_id": book_summary_data.get('summary_model_id', ''),
+            "generated_at": generated_at
+        }
+        
+        # Create a unique ID for the book
+        import re
+        book_id = re.sub(r'[^\w\s-]', '', book_title).strip()
+        book_id = re.sub(r'[-\s]+', '-', book_id).lower()
+        
+        # Index the document
+        response = client.index(
+            index=OPENSEARCH_INDEX,
+            id=book_id,
+            body=doc,
+            refresh=True
+        )
+        
+        if response['result'] == 'created' or response['result'] == 'updated':
+            logger.info(f"Successfully loaded book summary for {book_title}")
+            return True
+        else:
+            logger.error(f"Failed to load book summary for {book_title}")
             return False
-    
-    def process_all_book_summaries(self):
-        """Process all book summaries in the S3 bucket and load them into OpenSearch."""
-        print(f"Starting book summary loading for bucket: {self.bucket_name}")
-        print(f"OpenSearch endpoint: {self.opensearch_endpoint}")
-        print("=" * 60)
-        
-        # Create index if it doesn't exist
-        self.create_book_index_if_not_exists()
-        
-        # List all book summaries
-        summary_keys = self.list_book_summaries_in_s3()
-        if not summary_keys:
-            print("No book summaries found to process")
-            return
-        
-        print(f"Found {len(summary_keys)} book summaries to process")
-        
-        # Process each book summary
-        successful_books = 0
-        for summary_key in summary_keys:
-            book_summary_data = self.download_book_summary_from_s3(summary_key)
-            if book_summary_data:
-                if self.load_book_summary_to_opensearch(book_summary_data):
-                    successful_books += 1
-            print("-" * 40)
-        
-        print(f"Loading complete! Successfully loaded {successful_books}/{len(summary_keys)} book summaries")
-    
-    def check_index_status(self):
-        """Check the status of the book-summaries index."""
-        try:
-            index_name = "book-summaries"
             
-            # Check if index exists
-            if not self.opensearch_client.indices.exists(index=index_name):
-                print(f"Index {index_name} does not exist")
-                return
-            
-            # Get document count
-            count_response = self.opensearch_client.count(index=index_name)
-            document_count = count_response['count']
-            
-            # Get index stats
-            stats_response = self.opensearch_client.indices.stats(index=index_name)
-            index_stats = stats_response['indices'][index_name]
-            
-            print(f"Index: {index_name}")
-            print(f"Document count: {document_count}")
-            print(f"Total size: {index_stats['total']['store']['size_in_bytes']} bytes")
-            print(f"Primary shards: {index_stats['primaries']['docs']['count']} documents")
-            
-        except Exception as e:
-            print(f"Error checking index status: {e}")
+    except Exception as e:
+        logger.error(f"Error loading book summary to OpenSearch: {str(e)}")
+        return False
+
+def list_summaries(s3_client, bucket_name):
+    """List book summaries in S3"""
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix='book-summaries/'
+        )
+        
+        summaries = []
+        for obj in response.get('Contents', []):
+            if obj['Key'].endswith('summary.json'):
+                summaries.append(obj['Key'])
+        
+        return summaries
+    except Exception as e:
+        logger.error(f"Error listing summaries: {str(e)}")
+        raise
+
+def download_and_load_summary(s3_client, bucket_name, summary_key, opensearch_client):
+    """Download and load a single summary"""
+    try:
+        logger.info(f"Processing: {summary_key}")
+        
+        # Download from S3
+        response = s3_client.get_object(Bucket=bucket_name, Key=summary_key)
+        book_summary_data = json.loads(response['Body'].read().decode('utf-8'))
+        
+        # Load to OpenSearch
+        success = load_book_summary_to_opensearch(opensearch_client, book_summary_data)
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"Error processing {summary_key}: {str(e)}")
+        return False
+
+def check_index_status(client):
+    """Check index status"""
+    try:
+        # Check if index exists
+        index_exists = client.indices.exists(index=OPENSEARCH_INDEX)
+        
+        if not index_exists:
+            logger.info(f"Index {OPENSEARCH_INDEX} does not exist")
+            return {
+                'index_exists': False,
+                'document_count': 0,
+                'message': f'Index {OPENSEARCH_INDEX} does not exist'
+            }
+        
+        # Get document count
+        count_response = client.count(index=OPENSEARCH_INDEX)
+        document_count = count_response['count']
+        
+        # Get index stats
+        stats_response = client.indices.stats(index=OPENSEARCH_INDEX)
+        index_stats = stats_response['indices'][OPENSEARCH_INDEX]
+        
+        return {
+            'index_exists': True,
+            'document_count': document_count,
+            'index_stats': {
+                'total_docs': index_stats['total']['docs']['count'],
+                'total_size': index_stats['total']['store']['size_in_bytes'],
+                'primaries_docs': index_stats['primaries']['docs']['count'],
+                'primaries_size': index_stats['primaries']['store']['size_in_bytes']
+            },
+            'message': f'Index {OPENSEARCH_INDEX} has {document_count} documents'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking index: {str(e)}")
+        raise
 
 def main():
-    """Main function to run the book summary loader."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Load book summaries into OpenSearch for book-level search')
-    parser.add_argument('--bucket', required=True, help='S3 bucket name')
-    parser.add_argument('--opensearch-endpoint', required=True, help='OpenSearch endpoint URL')
-    parser.add_argument('--profile', help='AWS profile name')
-    parser.add_argument('--check-status', action='store_true', help='Check index status only')
+    parser = argparse.ArgumentParser(description='Load book summaries directly to OpenSearch')
+    parser.add_argument('--bucket', required=False, help='S3 bucket name')
+    parser.add_argument('--profile', default='caylent-dev-test', help='AWS profile name')
+    parser.add_argument('--region', default='us-east-1', help='AWS region')
+    parser.add_argument('--opensearch-endpoint', required=True, help='OpenSearch endpoint')
+    parser.add_argument('--check-only', action='store_true', help='Only check index status')
     
     args = parser.parse_args()
     
-    loader = BookSummaryLoader(args.bucket, args.opensearch_endpoint, args.profile)
-    
-    if args.check_status:
-        loader.check_index_status()
-    else:
-        loader.process_all_book_summaries()
+    try:
+        # Create OpenSearch client
+        opensearch_client = create_opensearch_client(args.opensearch_endpoint, args.profile)
+        
+        if args.check_only:
+            # Only check index status
+            status = check_index_status(opensearch_client)
+            print(json.dumps(status, indent=2))
+            return
+        
+        # For loading, bucket is required
+        if not args.bucket:
+            parser.error("--bucket is required when not using --check-only")
+        
+        # Create S3 client
+        s3_client = boto3.Session(profile_name=args.profile).client('s3', region_name=args.region)
+        
+        # Create index if it doesn't exist
+        create_index_if_not_exists(opensearch_client)
+        
+        # List summaries
+        logger.info("Listing book summaries in S3...")
+        summaries = list_summaries(s3_client, args.bucket)
+        
+        if not summaries:
+            logger.error("No book summaries found in S3!")
+            sys.exit(1)
+        
+        logger.info(f"Found {len(summaries)} summaries")
+        
+        # Load each summary
+        success_count = 0
+        total_count = len(summaries)
+        
+        for summary_key in summaries:
+            success = download_and_load_summary(s3_client, args.bucket, summary_key, opensearch_client)
+            if success:
+                success_count += 1
+            
+            # Rate limiting
+            import time
+            time.sleep(1)
+        
+        logger.info("==================================")
+        logger.info("Summary loading complete!")
+        logger.info(f"Successfully loaded: {success_count}/{total_count} summaries")
+        
+        # Check final status
+        logger.info("Checking final index status...")
+        status = check_index_status(opensearch_client)
+        print(json.dumps(status, indent=2))
+        
+    except Exception as e:
+        logger.error(f"Error in main: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 

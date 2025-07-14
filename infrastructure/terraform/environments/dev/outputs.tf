@@ -22,7 +22,7 @@ output "opensearch_endpoint" {
 
 output "opensearch_dashboard_url" {
   description = "URL for the OpenSearch dashboard"
-  value       = "https://${module.opensearch.domain_endpoint}/_dashboards/"
+  value       = " https://${module.opensearch.domain_endpoint}/_dashboards/"
 }
 
 output "api_gateway_url" {
@@ -54,4 +54,14 @@ output "sns_topic_arn" {
 output "bedrock_policy_arn" {
   description = "ARN of the Bedrock embedding policy"
   value       = module.lambda.bedrock_policy_arn
+}
+
+output "bastion_public_ip" {
+  description = "Public IP of the bastion host"
+  value       = module.opensearch.bastion_public_ip
+}
+
+output "bastion_private_ip" {
+  description = "Private IP of the bastion host"
+  value       = module.opensearch.bastion_private_ip
 } 

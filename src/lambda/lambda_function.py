@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Lambda function for semantic search using OpenSearch and Amazon Bedrock
+Lambda function for semantic search using multiple embedding types
 """
 
 import json
@@ -15,7 +15,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Constants
-OPENSEARCH_INDEX = "book-summaries"  # Book-level index
+OPENSEARCH_INDEX = "book-summaries"  # Index
 BEDROCK_MODEL_ID = "amazon.titan-embed-text-v1"
 
 def get_aws_auth():
@@ -49,10 +49,10 @@ def create_opensearch_client():
             use_ssl=True,
             verify_certs=True,
             connection_class=RequestsHttpConnection,
-            timeout=30,  # Increase timeout to 30 seconds
-            max_retries=3,  # Add retry logic
+            timeout=30,
+            max_retries=3,
             retry_on_timeout=True,
-            retry_on_status=[429, 500, 502, 503, 504]  # Retry on these status codes
+            retry_on_status=[429, 500, 502, 503, 504]
         )
         return client
     except Exception as e:
@@ -64,7 +64,6 @@ def generate_embedding(text):
     try:
         bedrock = boto3.client('bedrock-runtime')
         
-        # Prepare the request
         request_body = {
             "inputText": text
         }
@@ -78,26 +77,27 @@ def generate_embedding(text):
         embedding = response_body['embedding']
         
         logger.info(f"Generated embedding length: {len(embedding)}")
-        logger.info(f"Generated embedding first 5 values: {embedding[:5]}")
-        
         return embedding
     except Exception as e:
         logger.error(f"Error generating embedding: {str(e)}")
         raise
 
-def search_opensearch(query_embedding, size=5):
-    """Search OpenSearch using k-NN for book-level results"""
+def search_opensearch(query_embedding, search_type="combined", size=5):
+    """Search OpenSearch using embeddings with multiple search types"""
     try:
         logger.info("Creating OpenSearch client for search...")
         client = create_opensearch_client()
         logger.info("OpenSearch client created successfully")
+        
+        # Determine which embedding field to search
+        embedding_field = f"{search_type}_embedding"
         
         # Prepare the search query
         search_body = {
             "size": size,
             "query": {
                 "knn": {
-                    "book_embedding": {
+                    embedding_field: {
                         "vector": query_embedding,
                         "k": size
                     }
@@ -105,15 +105,14 @@ def search_opensearch(query_embedding, size=5):
             }
         }
         
+        logger.info(f"Searching with {search_type} embeddings")
         logger.info(f"Search body: {json.dumps(search_body, indent=2)}")
-        logger.info(f"Searching index: {OPENSEARCH_INDEX}")
         
-        # Execute search with timeout
-        logger.info("Executing search request...")
+        # Execute search
         response = client.search(
             index=OPENSEARCH_INDEX,
             body=search_body,
-            request_timeout=30  # 30 second timeout for the search request
+            request_timeout=30
         )
         logger.info("Search request completed successfully")
         
@@ -126,8 +125,12 @@ def search_opensearch(query_embedding, size=5):
             results.append({
                 'book_title': source.get('book_title', ''),
                 'author': source.get('author', ''),
-                'book_summary': source.get('book_summary', ''),
-                'score': hit['_score']
+                'plot_summary': source.get('plot_summary', ''),
+                'thematic_analysis': source.get('thematic_analysis', ''),
+                'character_summary': source.get('character_summary', ''),
+                'combined_summary': source.get('combined_summary', ''),
+                'score': hit['_score'],
+                'search_type': search_type
             })
         
         logger.info(f"Found {len(results)} book results")
@@ -136,6 +139,44 @@ def search_opensearch(query_embedding, size=5):
     except Exception as e:
         logger.error(f"Error searching OpenSearch: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
+        raise
+
+def search_opensearch_multi_strategy(query_embedding, size=5):
+    """Search using multiple strategies and combine results"""
+    try:
+        logger.info("Performing multi-strategy search...")
+        
+        # Search strategies to try
+        strategies = ["combined", "plot", "thematic", "character"]
+        all_results = []
+        
+        for strategy in strategies:
+            try:
+                results = search_opensearch(query_embedding, strategy, size)
+                for result in results:
+                    result['strategy'] = strategy
+                    all_results.append(result)
+            except Exception as e:
+                logger.warning(f"Strategy {strategy} failed: {str(e)}")
+                continue
+        
+        # Sort by score and remove duplicates
+        seen_books = set()
+        unique_results = []
+        
+        for result in sorted(all_results, key=lambda x: x['score'], reverse=True):
+            book_key = f"{result['book_title']}_{result['author']}"
+            if book_key not in seen_books:
+                seen_books.add(book_key)
+                unique_results.append(result)
+                if len(unique_results) >= size:
+                    break
+        
+        logger.info(f"Multi-strategy search returned {len(unique_results)} unique results")
+        return unique_results
+        
+    except Exception as e:
+        logger.error(f"Error in multi-strategy search: {str(e)}")
         raise
 
 def create_index_if_not_exists():
@@ -147,7 +188,7 @@ def create_index_if_not_exists():
         if not client.indices.exists(index=OPENSEARCH_INDEX):
             logger.info(f"Creating index: {OPENSEARCH_INDEX}")
             
-            # Index mapping for book-level vector search
+            # Index mapping with multiple embedding fields
             index_mapping = {
                 "settings": {
                     "index": {
@@ -164,8 +205,38 @@ def create_index_if_not_exists():
                     "properties": {
                         "book_title": {"type": "text"},
                         "author": {"type": "text"},
-                        "book_summary": {"type": "text"},
-                        "book_embedding": {
+                        "plot_summary": {"type": "text"},
+                        "thematic_analysis": {"type": "text"},
+                        "character_summary": {"type": "text"},
+                        "combined_summary": {"type": "text"},
+                        "plot_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
+                            }
+                        },
+                        "thematic_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
+                            }
+                        },
+                        "character_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
+                            }
+                        },
+                        "combined_embedding": {
                             "type": "knn_vector",
                             "dimension": 1536,
                             "method": {
@@ -205,8 +276,6 @@ def load_book_summary_to_opensearch(book_summary_data):
         
         book_title = book_summary_data.get('book_title', 'Unknown')
         author = book_summary_data.get('author', 'Unknown')
-        book_summary = book_summary_data.get('book_summary', '')
-        book_embedding = book_summary_data.get('book_embedding', [])
         
         logger.info(f"Loading book summary for: {book_title}")
         
@@ -218,15 +287,20 @@ def load_book_summary_to_opensearch(book_summary_data):
                 dt = datetime.datetime.strptime(generated_at, "%Y-%m-%d %H:%M:%S")
                 generated_at = dt.isoformat()
             except Exception:
-                # If parsing fails, leave as is
                 pass
         
-        # Prepare document
+        # Prepare document with all embedding types
         doc = {
             "book_title": book_title,
             "author": author,
-            "book_summary": book_summary,
-            "book_embedding": book_embedding,
+            "plot_summary": book_summary_data.get('plot_summary', ''),
+            "thematic_analysis": book_summary_data.get('thematic_analysis', ''),
+            "character_summary": book_summary_data.get('character_summary', ''),
+            "combined_summary": book_summary_data.get('combined_summary', ''),
+            "plot_embedding": book_summary_data.get('plot_embedding', []),
+            "thematic_embedding": book_summary_data.get('thematic_embedding', []),
+            "character_embedding": book_summary_data.get('character_embedding', []),
+            "combined_embedding": book_summary_data.get('combined_embedding', []),
             "total_chunks": book_summary_data.get('total_chunks', 0),
             "chunk_summaries": "\n\n".join(book_summary_data.get('chunk_summaries', [])),
             "embedding_model_id": book_summary_data.get('embedding_model_id', ''),
@@ -321,31 +395,10 @@ def check_opensearch_index():
             })
         }
 
-def purge_opensearch_index():
-    """Delete and recreate the OpenSearch index for book summaries."""
-    try:
-        client = create_opensearch_client()
-        if client.indices.exists(index=OPENSEARCH_INDEX):
-            client.indices.delete(index=OPENSEARCH_INDEX)
-            logger.info(f"Deleted index: {OPENSEARCH_INDEX}")
-        # Recreate the index
-        create_index_if_not_exists()
-        logger.info(f"Recreated index: {OPENSEARCH_INDEX}")
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'success': True, 'message': f'Index {OPENSEARCH_INDEX} purged and recreated.'})
-        }
-    except Exception as e:
-        logger.error(f"Error purging OpenSearch index: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'success': False, 'error': str(e)})
-        }
-
 def lambda_handler(event, context):
-    """Main Lambda handler"""
+    """Enhanced Lambda handler with multi-strategy search"""
     try:
-        # Handle direct Lambda invocations (for loading book summaries)
+        # Handle direct Lambda invocations (for loading enhanced book summaries)
         if 'action' in event:
             if event['action'] == 'load_book_summary':
                 logger.info("Processing load_book_summary action")
@@ -358,11 +411,8 @@ def lambda_handler(event, context):
             elif event['action'] == 'check_index':
                 logger.info("Processing check_index action")
                 return check_opensearch_index()
-            elif event['action'] == 'purge_index':
-                logger.info("Processing purge_index action")
-                return purge_opensearch_index()
         
-        # Handle API Gateway requests (search functionality)
+        # Handle API Gateway requests (enhanced search functionality)
         if 'body' in event:
             # Parse the request body
             try:
@@ -375,6 +425,7 @@ def lambda_handler(event, context):
             
             query = body.get('query', '')
             size = body.get('size', 5)
+            search_strategy = body.get('search_strategy', 'multi')  # New parameter
             
             if not query:
                 return {
@@ -382,17 +433,19 @@ def lambda_handler(event, context):
                     'body': json.dumps({'error': 'Query parameter is required'})
                 }
             
-            logger.info(f"Processing query: {query}")
+            logger.info(f"Processing enhanced query: {query}")
+            logger.info(f"Search strategy: {search_strategy}")
             
             # Generate embedding for the query
             logger.info(f"Generating embedding for text: '{query}'")
             query_embedding = generate_embedding(query)
             logger.info(f"Generated embedding successfully")
             
-            # Search OpenSearch
-            logger.info(f"Query embedding length: {len(query_embedding)}")
-            logger.info(f"Query embedding first 5 values: {query_embedding[:5]}")
-            results = search_opensearch(query_embedding, size)
+            # Search OpenSearch based on strategy
+            if search_strategy == 'multi':
+                results = search_opensearch_multi_strategy(query_embedding, size)
+            else:
+                results = search_opensearch(query_embedding, search_strategy, size)
             
             return {
                 'statusCode': 200,
@@ -404,6 +457,7 @@ def lambda_handler(event, context):
                 },
                 'body': json.dumps({
                     'query': query,
+                    'search_strategy': search_strategy,
                     'results': results,
                     'total_results': len(results)
                 })
@@ -415,7 +469,7 @@ def lambda_handler(event, context):
         }
         
     except Exception as e:
-        logger.error(f"Error in lambda_handler: {str(e)}")
+        logger.error(f"Error in enhanced lambda_handler: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({'error': f'Internal server error: {str(e)}'})
