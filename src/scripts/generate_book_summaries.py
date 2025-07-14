@@ -428,7 +428,11 @@ Character-focused summary:"""
             'chunk_summaries': chunk_summaries,
             **embeddings
         }
-        
+        # Map embedding keys to expected names for upload
+        book_data['plot_embedding'] = embeddings.get('plot_summary_embedding', [])
+        book_data['thematic_embedding'] = embeddings.get('thematic_analysis_embedding', [])
+        book_data['character_embedding'] = embeddings.get('character_summary_embedding', [])
+        book_data['combined_embedding'] = embeddings.get('combined_embedding', [])
         # Upload book summary
         success = self.upload_book_summary_to_s3(book_title, book_data)
         
