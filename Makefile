@@ -28,6 +28,7 @@ help:
 	@echo "  local-check-index - Check index status with local access"
 	@echo "  local-purge-index - Purge index with local OpenSearch access"
 	@echo "  local-stop - Stop local OpenSearch access (kill SSH tunnel)"
+	@echo "  upload-books - Upload 100 books from Project Gutenberg to S3 (scalable)"
 
 # Set up development environment
 setup:
@@ -140,6 +141,12 @@ deploy-lambda:
 		--profile caylent-dev-test
 	@echo "Lambda function deployed successfully!"
 
+# Upload books from Project Gutenberg
+upload-books:
+	@echo "Uploading books from Project Gutenberg to S3..."
+	@cd infrastructure/terraform/environments/dev && \
+	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
+	python ../../../../src/scripts/upload_gutenberg.py --bucket "$$BUCKET_NAME" --profile caylent-dev-test --limit 100
 
 # Show project status
 status:

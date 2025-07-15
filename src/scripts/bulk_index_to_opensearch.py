@@ -80,10 +80,15 @@ class BulkIndexer:
         """Create OpenSearch client with proper configuration."""
         try:
             # Remove protocol from endpoint
-            host = endpoint.replace('https://', '').replace('http://', '')
-            
+            endpoint = endpoint.replace('https://', '').replace('http://', '')
+            if ':' in endpoint:
+                host, port = endpoint.split(':')
+                port = int(port)
+            else:
+                host = endpoint
+                port = 443
             client = OpenSearch(
-                hosts=[{'host': host, 'port': 443}],
+                hosts=[{'host': host, 'port': port}],
                 http_auth=(username, password),
                 use_ssl=True,
                 verify_certs=False,
@@ -91,13 +96,10 @@ class BulkIndexer:
                 max_retries=3,
                 retry_on_timeout=True
             )
-            
             # Test connection
             cluster_info = client.info()
             logger.info(f"Connected to OpenSearch cluster: {cluster_info.get('cluster_name', 'unknown')}")
-            
             return client
-            
         except Exception as e:
             logger.error(f"Error creating OpenSearch client: {e}")
             raise

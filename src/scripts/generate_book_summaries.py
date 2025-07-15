@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 class BookSummaryGenerator:
     def __init__(self, bucket_name: str, aws_profile: str = None, 
                  embedding_model_id: str = "amazon.titan-embed-text-v1",
-                 summary_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0",
-                 max_workers: int = 4):
+                 summary_model_id: str = "anthropic.claude-instant-v1",  # Use a faster/cheaper model
+                 max_workers: int = 16):  # Increase default workers
         """Initialize the book summary generator."""
         self.bucket_name = bucket_name
         self.embedding_model_id = embedding_model_id
@@ -658,16 +658,16 @@ def main():
     parser.add_argument('--profile', help='AWS profile name')
     parser.add_argument('--embedding-model', default='amazon.titan-embed-text-v1', 
                        help='Bedrock model ID for embeddings')
-    parser.add_argument('--summary-model', default='anthropic.claude-3-sonnet-20240229-v1:0', 
-                       help='Bedrock model ID for summarization')
-    parser.add_argument('--chunk-size', type=int, default=8000, 
-                       help='Size of text chunks for summarization (default: 8000)')
-    parser.add_argument('--overlap', type=int, default=500, 
-                       help='Overlap between chunks (default: 500)')
+    parser.add_argument('--summary-model', default='anthropic.claude-instant-v1', 
+                       help='Bedrock model ID for summarization (default: fast model)')
+    parser.add_argument('--chunk-size', type=int, default=16000, 
+                       help='Size of text chunks for summarization (default: 16000)')
+    parser.add_argument('--overlap', type=int, default=200, 
+                       help='Overlap between chunks (default: 200)')
     parser.add_argument('--max-books', type=int, default=None, 
                        help='Maximum number of books to process (default: all)')
-    parser.add_argument('--max-workers', type=int, default=4, 
-                       help='Maximum number of parallel workers (default: 4)')
+    parser.add_argument('--max-workers', type=int, default=16, 
+                       help='Maximum number of parallel workers (default: 16)')
     parser.add_argument('--batch-size', type=int, default=100, 
                        help='Batch size for processing (default: 100)')
     parser.add_argument('--opensearch-endpoint', 

@@ -108,3 +108,6 @@ htmlcov/
 .env
 .env.local
 .env.*.local 
+
+# Book processing checkpoint file
+processed_books.pkl 
