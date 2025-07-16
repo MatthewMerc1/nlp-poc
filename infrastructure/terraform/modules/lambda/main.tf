@@ -1,6 +1,9 @@
 # Lambda Module - Lambda function with IAM roles and policies
 # This module creates a Lambda function with necessary permissions
 
+# Data source for current AWS account
+data "aws_caller_identity" "current" {}
+
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda" {
   name = "${var.function_name}-role"
@@ -101,10 +104,15 @@ resource "aws_iam_policy" "opensearch_policy" {
       {
         Effect = "Allow"
         Action = [
-          "es:ESHttp*"
+          "aoss:CreateCollectionItems",
+          "aoss:DescribeCollectionItems",
+          "aoss:UpdateCollectionItems",
+          "aoss:DeleteCollectionItems",
+          "aoss:ReadDocument",
+          "aoss:WriteDocument"
         ]
         Resource = [
-          "${var.opensearch_domain_arn}/*"
+          "arn:aws:aoss:${var.aws_region}:${data.aws_caller_identity.current.account_id}:collection/${var.opensearch_collection_name}"
         ]
       }
     ]
@@ -176,7 +184,12 @@ resource "aws_lambda_function" "main" {
   }
 
   environment {
-    variables = var.environment_variables
+    variables = merge(
+      var.environment_variables,
+      {
+        OPENSEARCH_ENDPOINT = var.opensearch_serverless_collection_endpoint
+      }
+    )
   }
 
   tags = var.tags

@@ -157,8 +157,7 @@ class BookSummaryGenerator:
     def _generate_chunk_summary(self, bedrock_client, chunk: str, chunk_index: int, total_chunks: int) -> str:
         """Generate a summary for a text chunk with more detail."""
         try:
-            prompt = f"""You are analyzing section {chunk_index} of {total_chunks} from a book. 
-Please provide a detailed summary of this section that captures:
+            prompt = f"""Analyze section {chunk_index} of {total_chunks} from a book and provide a detailed summary that captures:
 
 1. Key plot developments and events
 2. Important character interactions and developments
@@ -167,13 +166,13 @@ Please provide a detailed summary of this section that captures:
 5. Any notable dialogue or quotes
 6. How this section contributes to the overall story
 
-Focus on creating a rich, detailed summary that would help someone understand what happens in this section and why it matters. 
-Write in clear, engaging prose without any boilerplate text or meta-commentary.
+Write a rich, detailed summary that helps someone understand what happens in this section and why it matters. 
+Start directly with the content - no introductory phrases like "This section explores" or "Based on the analysis."
 
 Text section:
 {chunk}
 
-Detailed summary:"""
+Summary:"""
 
             request_body = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -210,8 +209,7 @@ Detailed summary:"""
             combined_summaries = "\n\n".join(chunk_summaries)
             
             # Generate comprehensive plot summary
-            plot_prompt = f"""Based on these detailed section summaries from "{book_title}" by {author}, 
-create a comprehensive plot summary that includes:
+            plot_prompt = f"""Create a comprehensive plot summary for "{book_title}" by {author} based on these section summaries. Include:
 
 1. Complete plot overview with all major events
 2. Character arcs and relationships
@@ -222,11 +220,12 @@ create a comprehensive plot summary that includes:
 
 Write a detailed, engaging summary that captures the full scope and impact of the story. 
 Aim for 8-12 sentences that would help someone understand the complete book.
+Start directly with the plot - no introductory phrases like "This book explores" or "Based on the summaries."
 
 Section summaries:
 {combined_summaries}
 
-Comprehensive plot summary:"""
+Plot summary:"""
 
             plot_request_body = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -248,8 +247,7 @@ Comprehensive plot summary:"""
             plot_summary = plot_response_body['content'][0]['text'].strip()
             
             # Generate thematic analysis
-            thematic_prompt = f"""Based on these section summaries from "{book_title}" by {author}, 
-analyze the major themes and motifs of this work. Consider:
+            thematic_prompt = f"""Analyze the major themes and motifs of "{book_title}" by {author} based on these section summaries. Consider:
 
 1. Central themes and their development throughout the story
 2. Symbolic elements and their meanings
@@ -259,6 +257,7 @@ analyze the major themes and motifs of this work. Consider:
 6. Historical or cultural context that shapes the themes
 
 Write a detailed thematic analysis that explores the deeper meanings and significance of this work.
+Start directly with the themes - no introductory phrases like "This work explores" or "The analysis reveals."
 
 Section summaries:
 {combined_summaries}
@@ -285,8 +284,7 @@ Thematic analysis:"""
             thematic_analysis = thematic_response_body['content'][0]['text'].strip()
             
             # Generate character summary
-            character_prompt = f"""Based on these section summaries from "{book_title}" by {author}, 
-provide a comprehensive character analysis that includes:
+            character_prompt = f"""Provide a comprehensive character analysis for "{book_title}" by {author} based on these section summaries. Include:
 
 1. Main characters and their key traits
 2. Character relationships and dynamics
@@ -296,6 +294,7 @@ provide a comprehensive character analysis that includes:
 6. How characters embody or challenge themes
 
 Write a detailed character summary that helps readers understand the people in this story.
+Start directly with the characters - no introductory phrases like "The characters in this story" or "Based on the analysis."
 
 Section summaries:
 {combined_summaries}

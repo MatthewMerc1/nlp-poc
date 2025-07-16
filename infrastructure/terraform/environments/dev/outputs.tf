@@ -10,21 +10,6 @@ output "bucket_arn" {
   value       = module.data_bucket.bucket_arn
 }
 
-output "opensearch_domain_name" {
-  description = "Name of the OpenSearch domain"
-  value       = module.opensearch.domain_name
-}
-
-output "opensearch_endpoint" {
-  description = "Endpoint of the OpenSearch domain"
-  value       = module.opensearch.domain_endpoint
-}
-
-output "opensearch_dashboard_url" {
-  description = "URL for the OpenSearch dashboard"
-  value       = " https://${module.opensearch.domain_endpoint}/_dashboards/"
-}
-
 output "api_gateway_url" {
   description = "URL of the API Gateway"
   value       = module.api_gateway.invoke_url
@@ -41,11 +26,6 @@ output "lambda_function_name" {
   value       = module.lambda.function_name
 }
 
-output "vpc_id" {
-  description = "ID of the VPC"
-  value       = module.opensearch.vpc_id
-}
-
 output "sns_topic_arn" {
   description = "ARN of the SNS topic for alerts"
   value       = module.monitoring.sns_topic_arn
@@ -56,12 +36,7 @@ output "bedrock_policy_arn" {
   value       = module.lambda.bedrock_policy_arn
 }
 
-output "bastion_public_ip" {
-  description = "Public IP of the bastion host"
-  value       = module.opensearch.bastion_public_ip
-}
-
-output "bastion_private_ip" {
-  description = "Private IP of the bastion host"
-  value       = module.opensearch.bastion_private_ip
+output "opensearch_serverless_collection_endpoint" {
+  description = "Endpoint for the OpenSearch Serverless collection."
+  value       = module.opensearch_serverless.collection_endpoint
 } 

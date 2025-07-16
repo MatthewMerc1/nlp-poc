@@ -66,7 +66,7 @@ load-summaries:
 	@echo "Loading book summaries to OpenSearch..."
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_serverless_collection_endpoint 2>/dev/null) && \
 	cd ../../.. && \
 	python src/scripts/load_book_summaries_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test
 
@@ -75,7 +75,7 @@ load-summaries-direct:
 	@echo "Loading summaries directly to OpenSearch..."
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_serverless_collection_endpoint 2>/dev/null) && \
 	python ../../../../src/scripts/bulk_index_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test --batch-size 100
 
 # Bulk index summaries to OpenSearch
@@ -83,14 +83,14 @@ bulk-index-summaries:
 	@echo "Bulk indexing summaries to OpenSearch..."
 	@cd infrastructure/terraform/environments/dev && \
 	BUCKET_NAME=$$(terraform output -raw bucket_name 2>/dev/null) && \
-	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_serverless_collection_endpoint 2>/dev/null) && \
 	python ../../../../src/scripts/bulk_index_to_opensearch.py --bucket "$$BUCKET_NAME" --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test --batch-size 100
 
 # Purge current OpenSearch index
 purge-index:
 	@echo "Purging current OpenSearch index..."
 	@cd infrastructure/terraform/environments/dev && \
-	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_serverless_collection_endpoint 2>/dev/null) && \
 	cd ../../.. && \
 	python src/scripts/purge_opensearch_direct.py --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test
 
@@ -98,7 +98,7 @@ purge-index:
 check-index:
 	@echo "Checking index status..."
 	@cd infrastructure/terraform/environments/dev && \
-	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_endpoint 2>/dev/null) && \
+	OPENSEARCH_ENDPOINT=$$(terraform output -raw opensearch_serverless_collection_endpoint 2>/dev/null) && \
 	python ../../../../src/scripts/load_book_summaries_to_opensearch.py --opensearch-endpoint "$$OPENSEARCH_ENDPOINT" --profile caylent-dev-test --check-only
 
 # Run tests

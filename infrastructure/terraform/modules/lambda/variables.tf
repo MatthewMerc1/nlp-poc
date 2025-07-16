@@ -44,8 +44,13 @@ variable "s3_bucket_arn" {
   type        = string
 }
 
-variable "opensearch_domain_arn" {
-  description = "ARN of the OpenSearch domain for Lambda access"
+variable "opensearch_serverless_collection_endpoint" {
+  description = "Endpoint for the OpenSearch Serverless collection."
+  type        = string
+}
+
+variable "opensearch_collection_name" {
+  description = "Name of the OpenSearch Serverless collection."
   type        = string
 }
 
