@@ -11,62 +11,60 @@ echo ""
 
 # Check if AWS credentials are available
 echo "Checking AWS credentials..."
-if ! aws sts get-caller-identity --profile caylent-dev-test >/dev/null 2>&1; then
+if ! aws sts get-caller-identity --profile caylent-test >/dev/null 2>&1; then
     echo "❌ AWS credentials not available or expired"
-    echo "Please run: aws sso login --profile caylent-dev-test"
+    echo "Please run: aws sso login --profile caylent-test"
     exit 1
 fi
 echo "✅ AWS credentials available"
 echo ""
 
-# Step 1: Deploy enhanced Lambda function
-echo "Step 1: Deploying enhanced Lambda function..."
-echo "This will replace the current Lambda with the enhanced version"
+# Step 1: Deploy Lambda function
+echo "Step 1: Deploying Lambda function..."
+echo "This will package and deploy the Lambda function"
 echo "Press Enter to continue or Ctrl+C to cancel..."
 read -r
 
-make deploy-enhanced-lambda
-echo "✅ Enhanced Lambda function deployed"
+make deploy-lambda
+echo "✅ Lambda function deployed"
 echo ""
 
-# Step 2: Run the enhanced pipeline
-echo "Step 2: Running enhanced pipeline..."
+# Step 2: Run the data pipeline
+echo "Step 2: Running data pipeline..."
 echo "This will:"
-echo "  - Purge the current OpenSearch index"
-echo "  - Generate enhanced book summaries (takes 10-15 minutes)"
-echo "  - Load enhanced summaries to OpenSearch"
+echo "  - Upload books from Project Gutenberg to S3"
+echo "  - Generate book summaries (takes 10-15 minutes)"
+echo "  - Load summaries to OpenSearch"
 echo ""
 echo "Press Enter to continue or Ctrl+C to cancel..."
 read -r
 
-make pipeline-enhanced
-echo "✅ Enhanced pipeline complete!"
+make upload-books
+make generate-summaries
+make load-summaries
+echo "✅ Data pipeline complete!"
 echo ""
 
-# Step 3: Test the enhanced system
-echo "Step 3: Testing enhanced search..."
-echo "Running enhanced API tests..."
-make test-enhanced
-echo "✅ Enhanced tests complete!"
+# Step 3: Test the system
+echo "Step 3: Testing search..."
+echo "Running API tests..."
+make test
+echo "✅ Tests complete!"
 echo ""
 
-echo "🎉 Enhanced pipeline successfully completed!"
+echo "🎉 Pipeline successfully completed!"
 echo ""
-echo "You can now test the improved search accuracy:"
+echo "You can now test the semantic search:"
 echo ""
-echo "  # Test with different strategies"
-echo "  python tests/api/test_enhanced_api.py 'wonderland' multi 3"
-echo "  python tests/api/test_enhanced_api.py 'detective mystery' plot 3"
-echo "  python tests/api/test_enhanced_api.py 'love story' thematic 3"
+echo "  # Test basic search"
+echo "  python tests/api/test_api.py 'wonderland' multi 3"
+echo "  python tests/api/test_api.py 'detective mystery' multi 3"
+echo "  python tests/api/test_api.py 'love story' multi 3"
 echo ""
-echo "  # Compare strategies"
-echo "  python tests/api/test_enhanced_api.py --compare 'monster creation'"
+echo "  # Test with different result counts"
+echo "  python tests/api/test_api.py 'monster creation' multi 5"
 echo ""
-echo "  # Test accuracy improvements"
-echo "  python tests/api/test_enhanced_api.py --accuracy"
-echo ""
-echo "Expected improvements:"
-echo "  - Better score differentiation"
-echo "  - More relevant results"
-echo "  - Strategy-specific matching"
-echo "  - No more boilerplate text in summaries" 
+echo "Expected features:"
+echo "  - Semantic search across book summaries"
+echo "  - Relevant book recommendations"
+echo "  - Clean, direct summaries without boilerplate" 

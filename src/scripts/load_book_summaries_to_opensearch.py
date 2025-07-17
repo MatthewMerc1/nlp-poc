@@ -12,6 +12,8 @@ import boto3
 import argparse
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
+from opensearchpy.exceptions import NotFoundError
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +32,7 @@ def get_aws_auth(profile_name):
             credentials.access_key,
             credentials.secret_key,
             session.region_name or 'us-east-1',
-            'es',
+            'aoss',  # Use 'aoss' for OpenSearch Serverless instead of 'es'
             session_token=credentials.token
         )
         return awsauth
@@ -44,6 +46,13 @@ def create_opensearch_client(endpoint, profile_name):
         # Check if this is a local endpoint (for development)
         is_local = endpoint.startswith('localhost') or endpoint.startswith('127.0.0.1')
         
+        # These options disable sniffing and root endpoint health checks, which cause 404s on OpenSearch Serverless
+        sniffing_options = {
+            'sniff_on_start': False,
+            'sniff_on_connection_fail': False,
+            'sniffer_timeout': None
+        }
+        
         if is_local:
             # For local development, use basic auth or no auth
             logger.info(f"Connecting to local OpenSearch endpoint: {endpoint}")
@@ -55,7 +64,8 @@ def create_opensearch_client(endpoint, profile_name):
                 timeout=30,
                 max_retries=3,
                 retry_on_timeout=True,
-                retry_on_status=[429, 500, 502, 503, 504]
+                retry_on_status=[429, 500, 502, 503, 504],
+                **sniffing_options
             )
         else:
             # For AWS OpenSearch, use AWS auth
@@ -69,13 +79,24 @@ def create_opensearch_client(endpoint, profile_name):
                 timeout=30,
                 max_retries=3,
                 retry_on_timeout=True,
-                retry_on_status=[429, 500, 502, 503, 504]
+                retry_on_status=[429, 500, 502, 503, 504],
+                **sniffing_options
             )
-        
-        return client
     except Exception as e:
         logger.error(f"Error creating OpenSearch client: {str(e)}")
+        traceback.print_exc()
         raise
+
+    # Now test with an index-specific call to ensure connectivity
+    try:
+        client.indices.exists(index=OPENSEARCH_INDEX)
+    except NotFoundError:
+        # This is fine, means the index doesn't exist yet
+        pass
+    except Exception as e:
+        logger.warning(f"Unexpected error when testing index existence: {e}")
+        traceback.print_exc()
+    return client
 
 def create_index_if_not_exists(client):
     """Create the OpenSearch index if it doesn't exist"""
@@ -84,17 +105,12 @@ def create_index_if_not_exists(client):
         if not client.indices.exists(index=OPENSEARCH_INDEX):
             logger.info(f"Creating index: {OPENSEARCH_INDEX}")
             
-            # Enhanced index mapping with multiple embedding fields
+            # Enhanced index mapping for SEARCH collection type (no KNN support)
             index_mapping = {
                 "settings": {
                     "index": {
-                        "knn": True,
-                        "knn.space_type": "cosinesimil",
-                        "knn.algo_param.ef_search": 512,
-                        "knn.algo_param.ef_construction": 512,
-                        "knn.algo_param.m": 16,
-                        "number_of_shards": 5,
-                        "number_of_replicas": 1
+                        "number_of_shards": 1,
+                        "number_of_replicas": 0
                     }
                 },
                 "mappings": {
@@ -105,58 +121,10 @@ def create_index_if_not_exists(client):
                         "thematic_analysis": {"type": "text"},
                         "character_summary": {"type": "text"},
                         "combined_summary": {"type": "text"},
-                        "plot_embedding": {
-                            "type": "knn_vector",
-                            "dimension": 1536,
-                            "method": {
-                                "name": "hnsw",
-                                "space_type": "cosinesimil",
-                                "engine": "nmslib",
-                                "parameters": {
-                                    "ef_construction": 512,
-                                    "m": 16
-                                }
-                            }
-                        },
-                        "thematic_embedding": {
-                            "type": "knn_vector",
-                            "dimension": 1536,
-                            "method": {
-                                "name": "hnsw",
-                                "space_type": "cosinesimil",
-                                "engine": "nmslib",
-                                "parameters": {
-                                    "ef_construction": 512,
-                                    "m": 16
-                                }
-                            }
-                        },
-                        "character_embedding": {
-                            "type": "knn_vector",
-                            "dimension": 1536,
-                            "method": {
-                                "name": "hnsw",
-                                "space_type": "cosinesimil",
-                                "engine": "nmslib",
-                                "parameters": {
-                                    "ef_construction": 512,
-                                    "m": 16
-                                }
-                            }
-                        },
-                        "combined_embedding": {
-                            "type": "knn_vector",
-                            "dimension": 1536,
-                            "method": {
-                                "name": "hnsw",
-                                "space_type": "cosinesimil",
-                                "engine": "nmslib",
-                                "parameters": {
-                                    "ef_construction": 512,
-                                    "m": 16
-                                }
-                            }
-                        },
+                        "plot_embedding": {"type": "binary"},
+                        "thematic_embedding": {"type": "binary"},
+                        "character_embedding": {"type": "binary"},
+                        "combined_embedding": {"type": "binary"},
                         "total_chunks": {"type": "integer"},
                         "chunk_summaries": {"type": "text"},
                         "embedding_model_id": {"type": "keyword"},
@@ -277,7 +245,6 @@ def check_index_status(client):
     try:
         # Check if index exists
         index_exists = client.indices.exists(index=OPENSEARCH_INDEX)
-        
         if not index_exists:
             logger.info(f"Index {OPENSEARCH_INDEX} does not exist")
             return {
@@ -285,27 +252,33 @@ def check_index_status(client):
                 'document_count': 0,
                 'message': f'Index {OPENSEARCH_INDEX} does not exist'
             }
-        
+
         # Get document count
         count_response = client.count(index=OPENSEARCH_INDEX)
         document_count = count_response['count']
-        
-        # Get index stats
-        stats_response = client.indices.stats(index=OPENSEARCH_INDEX)
-        index_stats = stats_response['indices'][OPENSEARCH_INDEX]
-        
-        return {
-            'index_exists': True,
-            'document_count': document_count,
-            'index_stats': {
+
+        # Try to get index stats, but handle 404 gracefully
+        stats = None
+        try:
+            stats_response = client.indices.stats(index=OPENSEARCH_INDEX)
+            index_stats = stats_response['indices'][OPENSEARCH_INDEX]
+            stats = {
                 'total_docs': index_stats['total']['docs']['count'],
                 'total_size': index_stats['total']['store']['size_in_bytes'],
                 'primaries_docs': index_stats['primaries']['docs']['count'],
                 'primaries_size': index_stats['primaries']['store']['size_in_bytes']
-            },
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch index stats: {e}")
+            stats = None
+
+        return {
+            'index_exists': True,
+            'document_count': document_count,
+            'index_stats': stats,
             'message': f'Index {OPENSEARCH_INDEX} has {document_count} documents'
         }
-        
+
     except Exception as e:
         logger.error(f"Error checking index: {str(e)}")
         raise
@@ -313,7 +286,7 @@ def check_index_status(client):
 def main():
     parser = argparse.ArgumentParser(description='Load book summaries directly to OpenSearch')
     parser.add_argument('--bucket', required=False, help='S3 bucket name')
-    parser.add_argument('--profile', default='caylent-dev-test', help='AWS profile name')
+    parser.add_argument('--profile', default='caylent-test', help='AWS profile name')
     parser.add_argument('--region', default='us-east-1', help='AWS region')
     parser.add_argument('--opensearch-endpoint', required=True, help='OpenSearch endpoint')
     parser.add_argument('--check-only', action='store_true', help='Only check index status')

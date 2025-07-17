@@ -15,7 +15,7 @@ def get_opensearch_endpoint():
     """Get OpenSearch endpoint from Terraform"""
     try:
         endpoint = subprocess.check_output(
-            ["terraform", "output", "-raw", "opensearch_endpoint"],
+            ["terraform", "output", "-raw", "opensearch_serverless_collection_endpoint"],
             cwd="infrastructure/terraform/environments/dev"
         ).decode("utf-8").strip()
         return endpoint
@@ -56,7 +56,7 @@ def purge_index_direct(opensearch_endpoint, aws_profile=None):
 def main():
     parser = argparse.ArgumentParser(description='Purge OpenSearch index directly')
     parser.add_argument('--opensearch-endpoint', help='OpenSearch endpoint (e.g., localhost:8443)')
-    parser.add_argument('--profile', default='caylent-dev-test', help='AWS profile to use')
+    parser.add_argument('--profile', default='caylent-test', help='AWS profile to use')
     
     args = parser.parse_args()
     

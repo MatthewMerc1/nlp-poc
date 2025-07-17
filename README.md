@@ -173,7 +173,7 @@ The following books from Project Gutenberg are processed:
 
 ### Environment Variables
 
-- `AWS_PROFILE`: Set to your AWS profile (default: `caylent-dev-test`)
+- `AWS_PROFILE`: Set to your AWS profile (default: `caylent-test`)
 - `AWS_REGION`: AWS region (default: `us-east-1`)
 
 ### Terraform Variables

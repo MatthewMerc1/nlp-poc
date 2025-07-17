@@ -6,7 +6,7 @@ set -e
 
 # Get configuration from environment or set defaults
 BUCKET_NAME=${BUCKET_NAME:-""}
-AWS_PROFILE=${AWS_PROFILE:-"caylent-dev-test"}
+AWS_PROFILE=${AWS_PROFILE:-"caylent-test"}
 CHUNK_SIZE=${CHUNK_SIZE:-8000}
 OVERLAP=${OVERLAP:-500}
 

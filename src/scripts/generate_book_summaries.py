@@ -42,10 +42,10 @@ class BookSummaryGenerator:
         if aws_profile:
             session = boto3.Session(profile_name=aws_profile)
             self.s3_client = session.client('s3')
-            self.bedrock_client = session.client('bedrock-runtime')
+            self.bedrock_client = session.client('bedrock-runtime', region_name='us-east-1')
         else:
             self.s3_client = boto3.client('s3')
-            self.bedrock_client = boto3.client('bedrock-runtime')
+            self.bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
     
     def list_books_in_s3(self) -> List[str]:
         """List all book files in the S3 bucket."""
@@ -370,6 +370,25 @@ Character summary:"""
         
         return "Unknown Author"
     
+    def upload_embeddings_to_s3(self, book_title: str, embeddings: dict, s3_client=None):
+        """Upload embeddings to S3 under the embeddings/ folder as a JSON file."""
+        import io
+        s3_key = f"embeddings/{book_title}.json"
+        try:
+            embeddings_json = json.dumps(embeddings)
+            if s3_client is None:
+                s3_client = self.s3_client
+            s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=s3_key,
+                Body=embeddings_json.encode('utf-8'),
+                ContentType='application/json',
+                ServerSideEncryption='AES256'
+            )
+            logger.info(f"Uploaded embeddings to S3: {s3_key}")
+        except Exception as e:
+            logger.error(f"Failed to upload embeddings to S3 for {book_title}: {e}")
+    
     def process_single_book(self, s3_key: str, chunk_size: int = 8000, overlap: int = 500) -> Optional[Dict]:
         """Process a single book and return the book data for bulk indexing."""
         book_title = os.path.basename(s3_key).replace('.txt', '')
@@ -381,10 +400,10 @@ Character summary:"""
             if hasattr(self, 'aws_profile') and self.aws_profile:
                 session = boto3.Session(profile_name=self.aws_profile)
                 s3_client = session.client('s3')
-                bedrock_client = session.client('bedrock-runtime')
+                bedrock_client = session.client('bedrock-runtime', region_name='us-east-1')
             else:
                 s3_client = boto3.client('s3')
-                bedrock_client = boto3.client('bedrock-runtime')
+                bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
             
             # Download and clean book
             text_content = self._download_book_from_s3(s3_client, s3_key)
@@ -462,7 +481,10 @@ Character summary:"""
                 'summary_model_id': self.summary_model_id,
                 'generated_at': time.strftime("%Y-%m-%d %H:%M:%S")
             }
-            
+
+            # Upload embeddings to S3 under embeddings/ folder
+            self.upload_embeddings_to_s3(book_title, embeddings, s3_client)
+
             logger.info(f"Successfully processed book: {book_title}")
             return book_data
             

@@ -62,7 +62,7 @@ def create_opensearch_client():
 def generate_embedding(text):
     """Generate embedding using Amazon Bedrock"""
     try:
-        bedrock = boto3.client('bedrock-runtime')
+        bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
         
         request_body = {
             "inputText": text
