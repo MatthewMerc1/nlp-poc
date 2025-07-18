@@ -26,6 +26,16 @@ output "lambda_function_name" {
   value       = module.lambda.function_name
 }
 
+output "lambda_role_arn" {
+  description = "ARN of the Lambda execution role"
+  value       = module.lambda.role_arn
+}
+
+output "lambda_role_name" {
+  description = "Name of the Lambda execution role"
+  value       = module.lambda.role_name
+}
+
 output "sns_topic_arn" {
   description = "ARN of the SNS topic for alerts"
   value       = module.monitoring.sns_topic_arn
@@ -39,4 +49,9 @@ output "bedrock_policy_arn" {
 output "opensearch_serverless_collection_endpoint" {
   description = "Endpoint for the OpenSearch Serverless collection."
   value       = module.opensearch_serverless.collection_endpoint
+}
+
+output "opensearch_serverless_collection_name" {
+  description = "Name of the OpenSearch Serverless collection."
+  value       = module.opensearch_serverless.collection_name
 } 

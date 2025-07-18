@@ -1,7 +1,7 @@
 resource "aws_opensearchserverless_collection" "this" {
   name        = var.collection_name
   description = var.description
-  type        = "SEARCH"
+  type        = "VECTORSEARCH"
   
   depends_on = [
     aws_opensearchserverless_security_policy.encryption

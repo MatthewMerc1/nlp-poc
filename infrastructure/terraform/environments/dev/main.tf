@@ -54,6 +54,7 @@ module "lambda" {
   s3_bucket_arn = module.data_bucket.bucket_arn
   opensearch_serverless_collection_endpoint = module.opensearch_serverless.collection_endpoint
   opensearch_collection_name = var.opensearch_serverless_collection_name
+  collection_id = module.opensearch_serverless.collection_id
   api_gateway_execution_arn = module.api_gateway.execution_arn
   environment_variables = {
     OPENSEARCH_ENDPOINT = module.opensearch_serverless.collection_endpoint

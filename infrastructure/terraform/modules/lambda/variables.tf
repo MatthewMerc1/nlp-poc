@@ -90,4 +90,9 @@ variable "create_lambda_function" {
   description = "Whether to create the Lambda function (set to false if it already exists)"
   type        = bool
   default     = true
+}
+
+variable "collection_id" {
+  description = "The OpenSearch Serverless collection ID (for use in ARNs)"
+  type        = string
 } 

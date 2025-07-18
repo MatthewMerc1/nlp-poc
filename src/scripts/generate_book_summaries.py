@@ -13,8 +13,8 @@ import logging
 from typing import List, Dict, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from botocore.exceptions import ClientError
-from opensearchpy import OpenSearch
-from opensearchpy.helpers import bulk
+import requests
+from requests_aws4auth import AWS4Auth
 import argparse
 import pickle
 from pathlib import Path

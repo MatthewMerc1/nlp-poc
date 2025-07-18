@@ -106,13 +106,15 @@ resource "aws_iam_policy" "opensearch_policy" {
         Action = [
           "aoss:CreateCollectionItems",
           "aoss:DescribeCollectionItems",
-          "aoss:UpdateCollectionItems",
+          "aoss:UpdateCollectionItems", 
           "aoss:DeleteCollectionItems",
           "aoss:ReadDocument",
-          "aoss:WriteDocument"
+          "aoss:WriteDocument",
+          "aoss:APIAccessAll"
         ]
         Resource = [
-          "arn:aws:aoss:${var.aws_region}:${data.aws_caller_identity.current.account_id}:collection/${var.opensearch_collection_name}"
+          "arn:aws:aoss:${var.aws_region}:${data.aws_caller_identity.current.account_id}:collection/${var.collection_id}",
+          "arn:aws:aoss:${var.aws_region}:${data.aws_caller_identity.current.account_id}:index/${var.collection_id}/*"
         ]
       }
     ]

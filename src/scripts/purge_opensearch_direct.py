@@ -10,6 +10,8 @@ import subprocess
 import sys
 from urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+from requests_aws4auth import AWS4Auth
+import boto3
 
 def get_opensearch_endpoint():
     """Get OpenSearch endpoint from Terraform"""
@@ -23,19 +25,28 @@ def get_opensearch_endpoint():
         print(f"Could not get OpenSearch endpoint from Terraform: {e}")
         return None
 
-def purge_index_direct(opensearch_endpoint, aws_profile=None):
-    """Purge OpenSearch index directly"""
+def purge_index_direct(opensearch_endpoint, aws_profile=None, region="us-east-1"):
+    """Purge OpenSearch index directly with SigV4 signing"""
     try:
         print(f"🔍 Purging OpenSearch index at: {opensearch_endpoint}")
-        
-        # Construct the URL for deleting the index
         url = f"https://{opensearch_endpoint}/book-summaries"
-        
         print(f"🗑️  Deleting index: {url}")
-        
-        # Make the DELETE request
-        response = requests.delete(url, verify=False)
-        
+
+        # Set up AWS SigV4 auth
+        session = boto3.Session(profile_name=aws_profile)
+        print(f"🔍 Using AWS profile: {aws_profile}")
+        credentials = session.get_credentials()
+        awsauth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            session.region_name or region,
+            'aoss',
+            session_token=credentials.token
+        )
+
+        # Make the DELETE request with SigV4 auth
+        response = requests.delete(url, auth=awsauth, verify=False)
+
         if response.status_code == 200:
             result = response.json()
             print("✅ Successfully purged book-summaries index")
@@ -48,7 +59,6 @@ def purge_index_direct(opensearch_endpoint, aws_profile=None):
             print(f"❌ Failed to purge index. Status: {response.status_code}")
             print(f"Response: {response.text}")
             return False
-            
     except Exception as e:
         print(f"❌ Error purging index: {str(e)}")
         return False
@@ -57,20 +67,19 @@ def main():
     parser = argparse.ArgumentParser(description='Purge OpenSearch index directly')
     parser.add_argument('--opensearch-endpoint', help='OpenSearch endpoint (e.g., localhost:8443)')
     parser.add_argument('--profile', default='caylent-test', help='AWS profile to use')
-    
+    parser.add_argument('--region', default='us-east-1', help='AWS region to use')
     args = parser.parse_args()
-    
-    # Get OpenSearch endpoint
+
     opensearch_endpoint = args.opensearch_endpoint
     if not opensearch_endpoint:
         opensearch_endpoint = get_opensearch_endpoint()
         if not opensearch_endpoint:
             print("❌ Could not get OpenSearch endpoint")
             sys.exit(1)
-    
+
     # Purge the index
-    success = purge_index_direct(opensearch_endpoint, args.profile)
-    
+    success = purge_index_direct(opensearch_endpoint, args.profile, args.region)
+
     if success:
         print("\n🎉 Index purge completed successfully!")
         print("You can now run the pipeline to populate with new summaries.")

@@ -12,8 +12,8 @@ import logging
 import argparse
 from typing import List, Dict, Generator
 from botocore.exceptions import ClientError
-from opensearchpy import OpenSearch
-from opensearchpy.helpers import bulk
+import requests
+from requests_aws4auth import AWS4Auth
 import time
 
 # Configure logging
@@ -76,155 +76,117 @@ class BulkIndexer:
             logger.error(f"Error parsing JSON from {s3_key}: {e}")
             return None
     
-    def create_opensearch_client(self, endpoint: str, username: str = 'admin', password: str = 'admin') -> OpenSearch:
-        """Create OpenSearch client with proper configuration."""
-        try:
-            # Remove protocol from endpoint
-            endpoint = endpoint.replace('https://', '').replace('http://', '')
-            if ':' in endpoint:
-                host, port = endpoint.split(':')
-                port = int(port)
-            else:
-                host = endpoint
-                port = 443
-            client = OpenSearch(
-                hosts=[{'host': host, 'port': port}],
-                http_auth=(username, password),
-                use_ssl=True,
-                verify_certs=False,
-                timeout=30,
-                max_retries=3,
-                retry_on_timeout=True
-            )
-            # Test connection
-            cluster_info = client.info()
-            logger.info(f"Connected to OpenSearch cluster: {cluster_info.get('cluster_name', 'unknown')}")
-            return client
-        except Exception as e:
-            logger.error(f"Error creating OpenSearch client: {e}")
-            raise
+    def create_opensearch_client(self, endpoint: str, username: str = 'admin', password: str = 'admin'):
+        """(REMOVED) No longer needed, replaced by requests-based calls."""
+        pass
     
-    def create_index_if_not_exists(self, client: OpenSearch, index_name: str = "book-summaries"):
-        """Create the OpenSearch index if it doesn't exist."""
-        try:
-            # Check if index exists
-            if not client.indices.exists(index=index_name):
-                logger.info(f"Creating index: {index_name}")
-                
-                # Index mapping with multiple embedding fields
-                index_mapping = {
-                    "settings": {
-                        "index": {
-                            "knn": True,
-                            "knn.space_type": "cosinesimil",
-                            "knn.algo_param.ef_search": 512,
-                            "knn.algo_param.ef_construction": 512,
-                            "knn.algo_param.m": 16,
-                            "number_of_shards": 5,
-                            "number_of_replicas": 1
-                        }
-                    },
-                    "mappings": {
-                        "properties": {
-                            "book_title": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "author": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "plot_summary": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "thematic_analysis": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "character_summary": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "combined_summary": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "plot_embedding": {
-                                "type": "knn_vector",
-                                "dimension": 1536,
-                                "method": {
-                                    "name": "hnsw",
-                                    "space_type": "cosinesimil",
-                                    "engine": "nmslib"
-                                }
-                            },
-                            "thematic_embedding": {
-                                "type": "knn_vector",
-                                "dimension": 1536,
-                                "method": {
-                                    "name": "hnsw",
-                                    "space_type": "cosinesimil",
-                                    "engine": "nmslib"
-                                }
-                            },
-                            "character_embedding": {
-                                "type": "knn_vector",
-                                "dimension": 1536,
-                                "method": {
-                                    "name": "hnsw",
-                                    "space_type": "cosinesimil",
-                                    "engine": "nmslib"
-                                }
-                            },
-                            "combined_embedding": {
-                                "type": "knn_vector",
-                                "dimension": 1536,
-                                "method": {
-                                    "name": "hnsw",
-                                    "space_type": "cosinesimil",
-                                    "engine": "nmslib"
-                                }
-                            },
-                            "total_chunks": {
-                                "type": "integer"
-                            },
-                            "chunk_summaries": {
-                                "type": "text",
-                                "analyzer": "standard"
-                            },
-                            "embedding_model_id": {
-                                "type": "keyword"
-                            },
-                            "summary_model_id": {
-                                "type": "keyword"
-                            },
-                            "generated_at": {
-                                "type": "date"
+    def create_index_if_not_exists(self, endpoint: str, index_name: str = "book-summaries", awsauth=None):
+        """Create the OpenSearch index if it doesn't exist using requests."""
+        url = f"{endpoint}/{index_name}"
+        headers = {"Content-Type": "application/json"}
+        # Check if index exists
+        response = requests.head(url, auth=awsauth, headers=headers)
+        if response.status_code == 404:
+            logger.info(f"Creating index: {index_name}")
+            # Define your index mapping here (reuse from previous code)
+            index_mapping = {
+                "settings": {
+                    "index": {
+                        "knn": True,
+                        "knn.space_type": "cosinesimil",
+                        "knn.algo_param.ef_search": 512,
+                        "knn.algo_param.ef_construction": 512,
+                        "knn.algo_param.m": 16,
+                        "number_of_shards": 5,
+                        "number_of_replicas": 1
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "book_title": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "author": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "plot_summary": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "thematic_analysis": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "character_summary": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "combined_summary": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "plot_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
                             }
+                        },
+                        "thematic_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
+                            }
+                        },
+                        "character_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
+                            }
+                        },
+                        "combined_embedding": {
+                            "type": "knn_vector",
+                            "dimension": 1536,
+                            "method": {
+                                "name": "hnsw",
+                                "space_type": "cosinesimil",
+                                "engine": "nmslib"
+                            }
+                        },
+                        "total_chunks": {
+                            "type": "integer"
+                        },
+                        "chunk_summaries": {
+                            "type": "text",
+                            "analyzer": "standard"
+                        },
+                        "embedding_model_id": {
+                            "type": "keyword"
+                        },
+                        "summary_model_id": {
+                            "type": "keyword"
+                        },
+                        "generated_at": {
+                            "type": "date"
                         }
                     }
                 }
-                
-                # Create index
-                response = client.indices.create(
-                    index=index_name,
-                    body=index_mapping
-                )
-                
-                if response.get('acknowledged'):
-                    logger.info(f"Successfully created index: {index_name}")
-                else:
-                    logger.error(f"Failed to create index: {index_name}")
-                    return False
-            else:
-                logger.info(f"Index {index_name} already exists")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error creating index: {e}")
-            return False
+            }
+            response = requests.put(url, auth=awsauth, headers=headers, json=index_mapping)
+            if response.status_code not in (200, 201):
+                logger.error(f"Failed to create index: {response.text}")
+        elif response.status_code != 200:
+            logger.error(f"Error checking index: {response.text}")
     
     def generate_documents(self, book_summaries: List[Dict], index_name: str = "book-summaries") -> Generator[Dict, None, None]:
         """Generate documents for bulk indexing."""
@@ -261,129 +223,62 @@ class BulkIndexer:
     
     def bulk_index_books(self, opensearch_endpoint: str, index_name: str = "book-summaries",
                         batch_size: int = 100, max_books: int = None,
-                        username: str = 'admin', password: str = 'admin') -> bool:
-        """Bulk index books to OpenSearch."""
-        try:
-            logger.info(f"Starting bulk indexing to OpenSearch...")
-            logger.info(f"Endpoint: {opensearch_endpoint}")
-            logger.info(f"Index: {index_name}")
-            logger.info(f"Batch size: {batch_size}")
-            
-            # Create OpenSearch client
-            client = self.create_opensearch_client(opensearch_endpoint, username, password)
-            
-            # Create index if it doesn't exist
-            if not self.create_index_if_not_exists(client, index_name):
-                logger.error("Failed to create index")
+                        aws_profile: str = None, region: str = "us-east-1") -> bool:
+        """Bulk index books to OpenSearch using the bulk API via requests."""
+        # Setup AWS auth
+        session = boto3.Session(profile_name=aws_profile) if aws_profile else boto3.Session()
+        credentials = session.get_credentials().get_frozen_credentials()
+        awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'aoss', session_token=credentials.token)
+        # Create index if needed
+        self.create_index_if_not_exists(opensearch_endpoint, index_name, awsauth)
+        # Prepare bulk payload
+        def generate_bulk_payload(book_summaries):
+            for book in book_summaries:
+                book_id = re.sub(r'[^\w\s-]', '', book['book_title']).strip()
+                book_id = re.sub(r'[-\s]+', '-', book_id).lower()
+                meta = {"index": {"_index": index_name, "_id": book_id}}
+                yield json.dumps(meta)
+                yield json.dumps(book)
+        # List and download summaries
+        keys = self.list_book_summaries_in_s3()
+        if max_books:
+            keys = keys[:max_books]
+        for i in range(0, len(keys), batch_size):
+            batch_keys = keys[i:i+batch_size]
+            books = [self.download_book_summary_from_s3(k) for k in batch_keys if self.download_book_summary_from_s3(k)]
+            bulk_lines = '\n'.join(generate_bulk_payload(books)) + '\n'
+            url = f"{opensearch_endpoint}/_bulk"
+            headers = {"Content-Type": "application/x-ndjson"}
+            response = requests.post(url, auth=awsauth, headers=headers, data=bulk_lines)
+            if response.status_code not in (200, 201):
+                logger.error(f"Bulk index failed: {response.text}")
                 return False
-            
-            # Get list of book summaries
-            book_summary_keys = self.list_book_summaries_in_s3()
-            if not book_summary_keys:
-                logger.error("No book summaries found to index")
-                return False
-            
-            logger.info(f"Found {len(book_summary_keys)} book summaries to index")
-            
-            # Apply max_books limit
-            if max_books is not None:
-                book_summary_keys = book_summary_keys[:max_books]
-                logger.info(f"Limiting to {max_books} books")
-            
-            # Process books in batches
-            total_indexed = 0
-            total_errors = 0
-            
-            for i in range(0, len(book_summary_keys), batch_size):
-                batch_keys = book_summary_keys[i:i + batch_size]
-                batch_num = (i // batch_size) + 1
-                total_batches = (len(book_summary_keys) + batch_size - 1) // batch_size
-                
-                logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch_keys)} books)")
-                
-                # Download book summaries for this batch
-                batch_books = []
-                for s3_key in batch_keys:
-                    book_data = self.download_book_summary_from_s3(s3_key)
-                    if book_data:
-                        batch_books.append(book_data)
-                    else:
-                        logger.warning(f"Failed to download book summary: {s3_key}")
-                
-                if not batch_books:
-                    logger.warning(f"No valid book summaries in batch {batch_num}")
-                    continue
-                
-                # Bulk index this batch
-                try:
-                    success_count, errors = bulk(
-                        client, 
-                        self.generate_documents(batch_books, index_name),
-                        chunk_size=50,  # Smaller chunks for better error handling
-                        request_timeout=60,
-                        max_retries=3
-                    )
-                    
-                    total_indexed += success_count
-                    total_errors += len(errors) if errors else 0
-                    
-                    logger.info(f"Batch {batch_num} complete: {success_count} indexed, {len(errors) if errors else 0} errors")
-                    
-                    if errors:
-                        logger.error(f"Errors in batch {batch_num}:")
-                        for error in errors[:3]:  # Show first 3 errors
-                            logger.error(f"  - {error}")
-                    
-                    # Small delay between batches to avoid overwhelming the cluster
-                    time.sleep(1)
-                    
-                except Exception as e:
-                    logger.error(f"Error indexing batch {batch_num}: {e}")
-                    total_errors += len(batch_books)
-            
-            logger.info(f"Bulk indexing complete!")
-            logger.info(f"Total indexed: {total_indexed}")
-            logger.info(f"Total errors: {total_errors}")
-            
-            # Verify indexing
-            try:
-                count_response = client.count(index=index_name)
-                actual_count = count_response['count']
-                logger.info(f"Documents in index: {actual_count}")
-                
-                if actual_count != total_indexed:
-                    logger.warning(f"Count mismatch: expected {total_indexed}, actual {actual_count}")
-                
-            except Exception as e:
-                logger.error(f"Error verifying index count: {e}")
-            
-            return total_errors == 0
-            
-        except Exception as e:
-            logger.error(f"Error during bulk indexing: {e}")
-            return False
+            logger.info(f"Bulk indexed {len(books)} books.")
+        return True
     
     def purge_index(self, opensearch_endpoint: str, index_name: str = "book-summaries",
-                   username: str = 'admin', password: str = 'admin') -> bool:
+                   aws_profile: str = None, region: str = "us-east-1") -> bool:
         """Purge all documents from the index."""
         try:
             logger.info(f"Purging index: {index_name}")
             
-            # Create OpenSearch client
-            client = self.create_opensearch_client(opensearch_endpoint, username, password)
-            
+            # Setup AWS auth
+            session = boto3.Session(profile_name=aws_profile) if aws_profile else boto3.Session()
+            credentials = session.get_credentials().get_frozen_credentials()
+            awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'aoss', session_token=credentials.token)
+
             # Check if index exists
-            if not client.indices.exists(index=index_name):
+            url = f"{opensearch_endpoint}/{index_name}"
+            response = requests.head(url, auth=awsauth)
+            if response.status_code == 404:
                 logger.info(f"Index {index_name} does not exist")
                 return True
             
             # Delete all documents
-            response = client.delete_by_query(
-                index=index_name,
-                body={"query": {"match_all": {}}}
-            )
+            url = f"{opensearch_endpoint}/{index_name}/_delete_by_query"
+            response = requests.post(url, auth=awsauth, json={"query": {"match_all": {}}})
             
-            deleted_count = response.get('deleted', 0)
+            deleted_count = response.json().get('deleted', 0)
             logger.info(f"Deleted {deleted_count} documents from index {index_name}")
             
             return True
@@ -412,7 +307,7 @@ def main():
     # Purge index if requested
     if args.purge:
         logger.info("Purging index before indexing...")
-        if not indexer.purge_index(args.opensearch_endpoint, args.index_name, args.username, args.password):
+        if not indexer.purge_index(args.opensearch_endpoint, args.index_name, args.profile):
             logger.error("Failed to purge index")
             exit(1)
     
@@ -422,8 +317,7 @@ def main():
         args.index_name,
         args.batch_size,
         args.max_books,
-        args.username,
-        args.password
+        args.profile
     )
     
     if success:
