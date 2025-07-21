@@ -23,73 +23,36 @@ class GutenbergUploader:
         else:
             self.s3_client = boto3.client('s3')
     
-    def get_gutenberg_book_urls(self, limit: int = 10) -> List[Dict]:
-        """Get a list of popular books from Project Gutenberg."""
-        # Popular books from Project Gutenberg
-        books = [
-            {
-                'title': 'Pride and Prejudice',
-                'author': 'Jane Austen',
-                'gutenberg_id': '1342',
-                'url': 'https://www.gutenberg.org/files/1342/1342-0.txt'
-            },
-            {
-                'title': 'The Great Gatsby',
-                'author': 'F. Scott Fitzgerald',
-                'gutenberg_id': '64317',
-                'url': 'https://www.gutenberg.org/files/64317/64317-0.txt'
-            },
-            {
-                'title': 'Alice\'s Adventures in Wonderland',
-                'author': 'Lewis Carroll',
-                'gutenberg_id': '11',
-                'url': 'https://www.gutenberg.org/files/11/11-0.txt'
-            },
-            {
-                'title': 'Frankenstein',
-                'author': 'Mary Shelley',
-                'gutenberg_id': '84',
-                'url': 'https://www.gutenberg.org/files/84/84-0.txt'
-            },
-            {
-                'title': 'The Adventures of Sherlock Holmes',
-                'author': 'Arthur Conan Doyle',
-                'gutenberg_id': '1661',
-                'url': 'https://www.gutenberg.org/files/1661/1661-0.txt'
-            },
-            {
-                'title': 'Dracula',
-                'author': 'Bram Stoker',
-                'gutenberg_id': '345',
-                'url': 'https://www.gutenberg.org/files/345/345-0.txt'
-            },
-            {
-                'title': 'The Picture of Dorian Gray',
-                'author': 'Oscar Wilde',
-                'gutenberg_id': '174',
-                'url': 'https://www.gutenberg.org/files/174/174-0.txt'
-            },
-            {
-                'title': 'The Time Machine',
-                'author': 'H.G. Wells',
-                'gutenberg_id': '35',
-                'url': 'https://www.gutenberg.org/files/35/35-0.txt'
-            },
-            {
-                'title': 'A Christmas Carol',
-                'author': 'Charles Dickens',
-                'gutenberg_id': '46',
-                'url': 'https://www.gutenberg.org/files/46/46-0.txt'
-            },
-            {
-                'title': 'The War of the Worlds',
-                'author': 'H.G. Wells',
-                'gutenberg_id': '36',
-                'url': 'https://www.gutenberg.org/files/36/36-0.txt'
-            }
-        ]
-        
+    def get_gutendex_books(self, limit=100) -> List[Dict]:
+        """Fetch a list of English book metadata from Gutendex API."""
+        books = []
+        page = 1
+        while len(books) < limit:
+            resp = requests.get(f"https://gutendex.com/books/?languages=en&page={page}")
+            data = resp.json()
+            for book in data['results']:
+                txt_url = None
+                for fmt, url in book['formats'].items():
+                    if fmt.startswith("text/plain") and url.endswith('.txt'):
+                        txt_url = url
+                        break
+                if txt_url:
+                    books.append({
+                        'title': book['title'],
+                        'author': book['authors'][0]['name'] if book['authors'] else 'Unknown',
+                        'gutenberg_id': str(book['id']),
+                        'url': txt_url
+                    })
+                if len(books) >= limit:
+                    break
+            if not data['next']:
+                break
+            page += 1
         return books[:limit]
+
+    def get_gutenberg_book_urls(self, limit: int = 100) -> List[Dict]:
+        """Get a list of books from Gutendex API (replaces static list)."""
+        return self.get_gutendex_books(limit)
     
     def download_book(self, book: Dict) -> str:
         """Download a book from Project Gutenberg."""
@@ -100,9 +63,11 @@ class GutenbergUploader:
             response.raise_for_status()
             
             # Clean the filename
-            filename = re.sub(r'[^\w\s-]', '', book['title']).strip()
-            filename = re.sub(r'[-\s]+', '-', filename)
-            filename = f"{filename}-{book['author'].replace(' ', '-')}.txt"
+            clean_title = re.sub(r'[^\w\s-]', '', book['title']).strip()
+            clean_title = re.sub(r'[-\s]+', '-', clean_title)
+            clean_author = re.sub(r'[^\w\s-]', '', book['author']).strip()
+            clean_author = re.sub(r'[-\s]+', '-', clean_author)
+            filename = f"{clean_title}__by__{clean_author}.txt"
             
             # Save locally first
             with open(filename, 'w', encoding='utf-8') as f:
@@ -180,7 +145,7 @@ def main():
     parser = argparse.ArgumentParser(description='Upload Project Gutenberg books to S3')
     parser.add_argument('--bucket', required=True, help='S3 bucket name')
     parser.add_argument('--profile', help='AWS profile name')
-    parser.add_argument('--limit', type=int, default=5, help='Number of books to upload (default: 5)')
+    parser.add_argument('--limit', type=int, default=100, help='Number of books to upload (default: 100)')
     
     args = parser.parse_args()
     

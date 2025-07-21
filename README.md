@@ -66,7 +66,7 @@ make setup
 # Deploy infrastructure
 make deploy
 
-# Run complete data pipeline (book-level summaries)
+# Run complete data pipeline
 make pipeline
 
 # Test the API
@@ -95,7 +95,7 @@ terraform apply
 ./src/scripts/upload_books.sh
 ```
 
-#### 3. Generate Book-Level Summaries (NEW)
+#### 3. Generate Book-Level Summaries
 
 ```bash
 # Generate hierarchical book summaries and embeddings
@@ -173,7 +173,7 @@ The following books from Project Gutenberg are processed:
 
 ### Environment Variables
 
-- `AWS_PROFILE`: Set to your AWS profile (default: `caylent-dev-test`)
+- `AWS_PROFILE`: Set to your AWS profile (default: `caylent-test`)
 - `AWS_REGION`: AWS region (default: `us-east-1`)
 
 ### Terraform Variables

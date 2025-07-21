@@ -9,7 +9,7 @@ variable "aws_region" {
 variable "aws_profile" {
   description = "AWS profile to use"
   type        = string
-  default     = "caylent-dev-test"
+  default     = "caylent-test"
 }
 
 variable "bucket_name" {
@@ -17,21 +17,28 @@ variable "bucket_name" {
   type        = string
 }
 
-variable "opensearch_domain_name" {
-  description = "Name of the OpenSearch domain"
+variable "opensearch_serverless_collection_name" {
+  description = "Name of the OpenSearch Serverless collection."
   type        = string
+  default     = "nlp-poc-serverless"
 }
 
-variable "allowed_ipv4_addresses" {
-  description = "List of allowed IPv4 addresses for OpenSearch access"
-  type        = list(string)
-  default     = []
+variable "opensearch_serverless_description" {
+  description = "Description for the OpenSearch Serverless collection."
+  type        = string
+  default     = "OpenSearch Serverless collection for NLP POC."
 }
 
-variable "allowed_ipv6_addresses" {
-  description = "List of allowed IPv6 addresses for OpenSearch access"
-  type        = list(string)
-  default     = []
+variable "opensearch_serverless_data_access_policy_json" {
+  description = "OpenSearch Serverless data access policy configuration."
+  type = list(object({
+    Principal = list(string)
+    Rules = list(object({
+      Resource     = list(string)
+      Permission   = list(string)
+      ResourceType = string
+    }))
+  }))
 }
 
 variable "force_destroy" {
@@ -59,12 +66,6 @@ variable "lifecycle_rules" {
     expiration_days = optional(number)
   }))
   default = []
-}
-
-variable "bastion_public_key" {
-  description = "Public SSH key for bastion host access"
-  type        = string
-  default     = ""
 }
 
 variable "alert_email_addresses" {

@@ -16,7 +16,7 @@ echo -e "${GREEN}Setting up local OpenSearch access...${NC}"
 # Get the bastion host IP from Terraform
 cd infrastructure/terraform/environments/dev
 BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
-OPENSEARCH_ENDPOINT=$(terraform output -raw opensearch_endpoint 2>/dev/null || echo "")
+OPENSEARCH_ENDPOINT=$(terraform output -raw opensearch_serverless_collection_endpoint 2>/dev/null || echo "")
 
 if [ -z "$BASTION_IP" ]; then
     echo -e "${RED}Error: Could not get bastion IP from Terraform. Make sure you're in the dev environment directory.${NC}"
