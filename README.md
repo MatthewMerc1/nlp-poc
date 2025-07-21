@@ -10,43 +10,30 @@ nlp-poc/
 │   ├── lambda/            # Lambda function
 │   │   ├── lambda_function.py
 │   │   └── requirements.txt
-│   ├── scripts/           # Core Python scripts
+│   ├── scripts/           # Core Python and shell scripts
 │   │   ├── upload_gutenberg.py      # Download books from Project Gutenberg
-│   │   ├── generate_embeddings.py   # Generate embeddings using Bedrock
-│   │   ├── check_embeddings.py      # Check generated embeddings
-│   │   ├── load_embeddings_to_opensearch.py # Load embeddings to OpenSearch (legacy)
-│   │   ├── load_embeddings_via_lambda.py    # Load embeddings via Lambda (recommended)
-│   │   ├── upload_books.sh          # Shell script to upload books
-│   │   ├── generate_embeddings.sh   # Shell script to generate embeddings
-│   │   └── load_to_opensearch.sh    # Shell script to load to OpenSearch (updated)
+│   │   ├── generate_book_summaries.py   # Generate book-level summaries (scalable, parallel)
+│   │   ├── bulk_index_to_opensearch.py  # Bulk index summaries to OpenSearch
+│   │   ├── load_book_summaries_to_opensearch.py # Load summaries to OpenSearch (direct)
+│   │   ├── generate_book_summaries.sh   # Shell wrapper for summary generation
+│   │   └── upload_books.sh              # Shell wrapper for uploading books
 │   └── api/               # API-related code (future)
 ├── infrastructure/        # Infrastructure as Code
 │   ├── terraform/         # Terraform configurations
-│   │   ├── main.tf        # Main Terraform configuration
-│   │   ├── variables.tf   # Variable definitions
-│   │   ├── outputs.tf     # Output values
-│   │   ├── iam.tf         # IAM policies
-│   │   ├── opensearch.tf  # OpenSearch domain
-│   │   ├── s3.tf          # S3 bucket configuration
-│   │   ├── monitoring.tf  # CloudWatch monitoring
-│   │   ├── api_gateway.tf # API Gateway configuration
-│   │   ├── terraform.tfvars # Variable values
-│   │   └── .terraform/    # Generated files (gitignored)
+│   │   ├── environments/dev/   # Dev environment configs
+│   │   └── modules/           # Terraform modules
 │   └── scripts/           # Infrastructure scripts
 │       ├── package_lambda.sh # Package Lambda function
 │       └── teardown.sh       # Cleanup infrastructure
 ├── scripts/               # Orchestration scripts
 │   ├── setup.sh           # Initial project setup
-│   └── pipeline.sh        # Complete data pipeline
+│   └── pipeline.sh        # Complete data pipeline (Makefile: pipeline)
 ├── tests/                 # Test files
 │   ├── unit/              # Unit tests
 │   ├── integration/       # Integration tests
 │   └── api/               # API tests
-│       └── test_semantic_api.py
+│       └── test_api.py    # Enhanced API test script
 ├── docs/                  # Documentation
-│   ├── api/               # API documentation
-│   ├── deployment/        # Deployment guides
-│   └── architecture/      # Architecture diagrams
 ├── config/                # Configuration files
 │   └── terraform.tfvars.example # Example Terraform variables
 ├── requirements.txt       # Python dependencies
@@ -57,16 +44,19 @@ nlp-poc/
 
 ## 🚀 Quick Start
 
-### Option 1: Using Makefile (Recommended)
+### Using Makefile (Recommended)
 
 ```bash
 # Set up development environment
 make setup
 
-# Deploy infrastructure
+# Deploy infrastructure (without Lambda)
 make deploy
 
-# Run complete data pipeline
+# Deploy Lambda function (package and upload)
+make deploy-lambda
+
+# Run complete data pipeline (deploy Lambda, upload books, generate summaries, load to OpenSearch, test)
 make pipeline
 
 # Test the API
@@ -76,93 +66,101 @@ make test
 make status
 ```
 
-### Option 2: Manual Steps
-
-#### 1. Deploy Infrastructure
+## 🛠️ Available Makefile Commands
 
 ```bash
-cd terraform
-terraform init
-terraform plan
-terraform apply
+make help                # Show all available commands
+make setup               # Set up development environment
+make deploy              # Deploy infrastructure (without Lambda)
+make deploy-full         # Deploy complete infrastructure with Lambda
+make package             # Package Lambda function
+make deploy-lambda       # Package and deploy Lambda function to AWS
+make pipeline            # Run the complete data pipeline (recommended)
+make generate-summaries  # Generate book summaries (parallel, scalable)
+make bulk-index-summaries# Bulk index summaries to OpenSearch (direct)
+make load-summaries      # Load summaries to OpenSearch (direct, not via Lambda)
+make test                # Run API tests
+make teardown            # Tear down infrastructure
+make clean               # Clean up generated files
+make upload-books        # Upload 100 books from Project Gutenberg to S3
+make status              # Show project status (virtualenv, Terraform, Lambda package)
 ```
 
-**Note:** OpenSearch domain creation takes 10-15 minutes.
+## 🧩 Manual Steps (Advanced)
 
-#### 2. Upload Books from Project Gutenberg
-
+### 1. Upload Books from Project Gutenberg
 ```bash
-./src/scripts/upload_books.sh
+make upload-books
+# or manually:
+BUCKET_NAME=your-bucket-name AWS_PROFILE=your-profile ./src/scripts/upload_books.sh
 ```
 
-#### 3. Generate Book-Level Summaries
-
+### 2. Generate Book-Level Summaries (Parallel, Scalable)
 ```bash
-# Generate hierarchical book summaries and embeddings
-./src/scripts/generate_book_summaries.sh
+make generate-summaries
+# or manually:
+BUCKET_NAME=your-bucket-name AWS_PROFILE=your-profile ./src/scripts/generate_book_summaries.sh
+# or directly:
+python src/scripts/generate_book_summaries.py --bucket your-bucket-name --profile your-profile --max-workers 8 --batch-size 50
 ```
 
-#### 4. Load Book Summaries into OpenSearch
-
+### 3. Load Book Summaries into OpenSearch
 ```bash
-# Load book summaries into OpenSearch for book-level search
-./src/scripts/load_book_summaries.sh
+make load-summaries
+# or manually:
+python src/scripts/load_book_summaries_to_opensearch.py --bucket your-bucket-name --profile your-profile --opensearch-endpoint your-opensearch-endpoint
 ```
 
-#### 5. Package and Deploy Lambda
-
+### 4. Bulk Index Summaries to OpenSearch (for large-scale loads)
 ```bash
-# Package Lambda function
+make bulk-index-summaries
+# or manually:
+python src/scripts/bulk_index_to_opensearch.py --bucket your-bucket-name --profile your-profile --opensearch-endpoint your-opensearch-endpoint
+```
+
+### 5. Package and Deploy Lambda
+```bash
+make deploy-lambda
+# or manually:
 ./infrastructure/scripts/package_lambda.sh
-
-# Deploy infrastructure
-cd infrastructure/terraform
-terraform apply
+# then deploy with Terraform or AWS CLI
 ```
 
-#### 6. Test Book-Level Semantic Search API
-
+### 6. Test the API
 ```bash
-# Test the API (automatically gets URL and API key from Terraform)
-python tests/api/test_semantic_api.py "What is the meaning of life?"
-
-# Or with custom size
-python tests/api/test_semantic_api.py "What is the meaning of life?" 10
+make test
+# or manually:
+python tests/api/test_api.py 'your query' [strategy] [size]
+python tests/api/test_api.py --compare 'your query'
+python tests/api/test_api.py --accuracy
 ```
 
-### 7. Access OpenSearch Dashboard
+## 🧪 API Test Script Usage
 
+The main API test script is `tests/api/test_api.py`. It supports multiple search strategies and enhanced output.
+
+**Usage:**
 ```bash
-cd infrastructure/terraform
-terraform output opensearch_dashboard_url
+python tests/api/test_api.py "your query" [strategy] [size]
+python tests/api/test_api.py --compare "your query"
+python tests/api/test_api.py --accuracy
 ```
-
-## 🛠️ Available Commands
-
-The project includes a Makefile with convenient commands:
-
-```bash
-make help      # Show all available commands
-make setup     # Set up development environment
-make deploy    # Deploy infrastructure
-make pipeline  # Run complete data pipeline
-make load-embeddings # Load embeddings to OpenSearch via Lambda
-make test      # Run API tests
-make teardown  # Tear down infrastructure
-make clean     # Clean up generated files
-make package   # Package Lambda function
-make status    # Show project status
-```
+- **Strategies:** multi, plot, thematic, character, combined
+- **Examples:**
+  - `python tests/api/test_api.py 'wonderland'`
+  - `python tests/api/test_api.py 'detective mystery' plot 3`
+  - `python tests/api/test_api.py --compare 'love story'`
+  - `python tests/api/test_api.py --accuracy`
 
 ## 📚 Books Included
 
-The following books from Project Gutenberg are processed:
+The following books from Project Gutenberg are processed (default set, can be expanded):
 
-1. **Pride and Prejudice** - Jane Austen (899 chunks)
-2. **The Great Gatsby** - F. Scott Fitzgerald (319 chunks)
-3. **Alice's Adventures in Wonderland** - Lewis Carroll (178 chunks)
-4. **Frankenstein** - Mary Shelley (518 chunks)
-5. **The Adventures of Sherlock Holmes** - Arthur Conan Doyle (669 chunks)
+1. **Pride and Prejudice** - Jane Austen
+2. **The Great Gatsby** - F. Scott Fitzgerald
+3. **Alice's Adventures in Wonderland** - Lewis Carroll
+4. **Frankenstein** - Mary Shelley
+5. **The Adventures of Sherlock Holmes** - Arthur Conan Doyle
 6. **Dracula** - Bram Stoker
 7. **The Picture of Dorian Gray** - Oscar Wilde
 8. **The Time Machine** - H.G. Wells
@@ -172,99 +170,50 @@ The following books from Project Gutenberg are processed:
 ## 🔧 Configuration
 
 ### Environment Variables
-
 - `AWS_PROFILE`: Set to your AWS profile (default: `caylent-test`)
 - `AWS_REGION`: AWS region (default: `us-east-1`)
 
 ### Terraform Variables
-
-Key variables in `infrastructure/terraform/terraform.tfvars`:
-
+Key variables in `infrastructure/terraform/environments/dev/terraform.tfvars`:
 - `bucket_name`: S3 bucket name
 - `opensearch_domain_name`: OpenSearch domain name
-- `opensearch_instance_type`: OpenSearch instance type (default: `t3.small.search`)
 
 ## 🏗️ Infrastructure Components
 
-### AWS Resources Created
+- **S3 Bucket**: Stores books and embeddings
+- **OpenSearch Serverless**: Vector search database
+- **API Gateway**: REST API for semantic search
+- **Lambda Function**: Serverless semantic search handler
+- **IAM Policies**: Permissions for Bedrock and S3
+- **Monitoring**: CloudWatch alarms and logging
 
-1. **S3 Bucket** - Stores books and embeddings
-2. **OpenSearch Domain** - Vector search database
-3. **VPC & Networking** - Isolated network for OpenSearch
-4. **IAM Policies** - Permissions for Bedrock and S3
-5. **API Gateway** - REST API for semantic search
-6. **Lambda Function** - Serverless semantic search handler
+## 🔄 Book-Level Semantic Search Pipeline
 
-### OpenSearch Index Structure
+- **Upload books** from Project Gutenberg to S3
+- **Generate hierarchical summaries** for each book (parallel, scalable)
+- **Generate embeddings** for summaries
+- **Bulk index/load summaries** to OpenSearch
+- **Query via API Gateway + Lambda**
 
-#### Book-Level Search (Current)
-- `book_title`: Text field for filtering
-- `author`: Text field for filtering
-- `book_summary`: High-level book summary
-- `book_embedding`: 1536-dimensional embedding vector of the book summary
-- `total_chunks`: Number of chunks used for summarization
-- `chunk_summaries`: Combined summaries of all chunks
-- `embedding_model_id`: Model used for embeddings
-- `summary_model_id`: Model used for summarization
-- `generated_at`: Timestamp of generation
+## 📝 Script Reference
 
-#### Chunk-Level Search (Legacy)
-- `book_title`: Text field for filtering
-- `author`: Text field for filtering
-- `chunk_index`: Integer for ordering
-- `text`: Original text content
-- `text_vector`: 1536-dimensional embedding vector
+### Python Scripts (src/scripts/)
+- `upload_gutenberg.py`: Download books from Project Gutenberg and upload to S3
+- `generate_book_summaries.py`: Generate book-level summaries and embeddings (parallel, scalable)
+- `bulk_index_to_opensearch.py`: Bulk index book summaries to OpenSearch (efficient for large datasets)
+- `load_book_summaries_to_opensearch.py`: Load book summaries to OpenSearch (direct, not via Lambda)
 
-## 🔄 Book-Level Semantic Search
+### Shell Scripts (src/scripts/)
+- `upload_books.sh`: Wrapper for uploading books
+- `generate_book_summaries.sh`: Wrapper for summary generation
 
-The project now uses **hierarchical summarization** to provide book-level semantic search instead of passage-level search. This approach:
+### Orchestration Scripts (scripts/)
+- `pipeline.sh`: Runs the full pipeline (deploy Lambda, upload books, generate summaries, load to OpenSearch, test)
+- `setup.sh`: Initial project setup
 
-1. **Chunks books into large sections** (8,000 characters with 500 character overlap)
-2. **Generates summaries for each chunk** using Claude 3 Sonnet
-3. **Creates a final book summary** by combining all chunk summaries
-4. **Generates embeddings for the book summary** using Titan Embed
-5. **Returns matching books** instead of individual passages
-
-### Benefits:
-- **Better context**: Users get complete book recommendations
-- **Reduced noise**: No more fragmented passage results
-- **Higher quality**: Hierarchical summarization captures book themes
-- **Scalable**: Fewer embeddings to store and search
-
-## 🔄 Lambda-Based Book Summary Loading
-
-The project uses a **Lambda-based approach** for loading book summaries into OpenSearch, which provides several advantages:
-
-### Why Lambda-Based Loading?
-
-1. **No Connectivity Issues**: Lambda function is already in the VPC and can access OpenSearch
-2. **More Secure**: No need to expose OpenSearch to the internet
-3. **Reliable**: Avoids network timeouts and connection issues
-4. **Scalable**: Can handle large datasets efficiently
-
-### How It Works
-
-1. **Lambda Function Enhancement**: The Lambda function now includes a `load_embeddings` action
-2. **S3 Integration**: Reads embedding files from S3 bucket
-3. **Bulk Indexing**: Uses OpenSearch bulk API for efficient loading
-4. **Error Handling**: Comprehensive error handling and logging
-
-### Usage
-
-```bash
-# Load all embeddings using the updated script
-./src/scripts/load_to_opensearch.sh
-
-# Or use the dedicated Makefile command
-make load-embeddings
-
-# Or run the Python script directly
-python src/scripts/load_embeddings_via_lambda.py \
-    --bucket "your-bucket-name" \
-    --profile "your-aws-profile"
-```
-- `model_id`: Embedding model used
-- `uploaded_at`: Timestamp
+### Infrastructure Scripts (infrastructure/scripts/)
+- `package_lambda.sh`: Package Lambda function for deployment
+- `teardown.sh`: Tear down infrastructure
 
 ## 🔍 Vector Search Features
 
@@ -283,6 +232,7 @@ python src/scripts/load_embeddings_via_lambda.py \
 ```json
 {
   "query": "What is the meaning of life?",
+  "search_strategy": "multi",
   "size": 5
 }
 ```
@@ -291,14 +241,13 @@ python src/scripts/load_embeddings_via_lambda.py \
 ```json
 {
   "query": "What is the meaning of life?",
+  "search_strategy": "multi",
   "results": [
     {
       "score": 0.9234,
-      "title": "The Great Gatsby",
+      "book_title": "The Great Gatsby",
       "author": "F. Scott Fitzgerald",
-      "book_id": "gatsby",
-      "chapter": "Chapter 1",
-      "content": "In my younger and more vulnerable years my father gave me some advice..."
+      "summary": "..."
     }
   ],
   "total_results": 5
@@ -312,133 +261,21 @@ python src/scripts/load_embeddings_via_lambda.py \
 curl -X POST "https://your-api-gateway-url/prod/search" \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
-  -d '{"query": "What is the meaning of life?", "size": 5}'
+  -d '{"query": "What is the meaning of life?", "search_strategy": "multi", "size": 5}'
 
-# Using Python (automatically gets API key)
-python scripts/test_semantic_api.py "What is the meaning of life?"
+# Using Python
+env API_KEY=your-key API_URL=your-url python tests/api/test_api.py 'What is the meaning of life?'
 ```
 
-## 💰 Cost Estimation
+## 🔒 Security & Monitoring
 
-- **OpenSearch**: ~$30/month (t3.small.search)
-- **S3 Storage**: ~$0.023/GB/month
-- **Bedrock Embeddings**: ~$0.0001 per 1K tokens
-- **API Gateway**: ~$3.50/million requests
-- **Lambda**: ~$0.20 per million requests + compute time
-- **Data Transfer**: Minimal for this use case
-
-## 🛠️ Development
-
-### Running Scripts Manually
-
-```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Upload books
-python scripts/upload_gutenberg.py --bucket "your-bucket" --profile "your-profile"
-
-# Generate embeddings
-python scripts/generate_embeddings.py --bucket "your-bucket" --profile "your-profile"
-
-# Check embeddings
-python scripts/check_embeddings.py --bucket "your-bucket" --profile "your-profile"
-
-# Load to OpenSearch
-python scripts/load_embeddings_to_opensearch.py \
-  --bucket "your-bucket" \
-  --opensearch-endpoint "your-opensearch-endpoint" \
-  --profile "your-profile"
-```
-
-### Adding New Books
-
-1. Update the book list in `scripts/upload_gutenberg.py`
-2. Run `./upload_books.sh`
-3. Run `./generate_embeddings.sh`
-4. Run `./load_to_opensearch.sh`
-
-## 🔒 Security Notes
-
-- OpenSearch access is currently open for development
-- Restrict IP access in production
-
-## 🔒 Security Best Practices
-
-This project implements several security best practices:
-
-### S3 Security
-- **Server-side encryption** enabled with AES256
-- **Public access blocked** completely
-- **Bucket policy** enforces encryption for uploads
-- **Versioning enabled** for data protection
-- **Lifecycle policies** for cost optimization
-
-### OpenSearch Security
-- **Fine-grained access control** enabled
-- **IP restrictions** via security groups and access policies
-- **Encryption at rest** and in transit
-- **VPC isolation** for network security
-
-### API Gateway Security
-- **API key authentication** required
-- **Usage plans** with rate limiting (10 req/sec, 1000/day)
-- **CloudWatch logging** for audit trails
-- **CORS configuration** for web access
-
-### Lambda Security
-- **VPC isolation** for network security
-- **IAM least privilege** principles
-- **Environment variable encryption** (consider using AWS Secrets Manager for production)
-- **Reserved concurrency** to prevent resource exhaustion
-
-## 📊 Monitoring & Observability
-
-### CloudWatch Alarms
-The following alarms are configured:
-- **Lambda Errors**: Alerts when error rate exceeds 5 errors per 5 minutes
-- **Lambda Duration**: Alerts when execution time exceeds 25 seconds
-- **API Gateway 4XX Errors**: Alerts when client errors exceed 10 per 5 minutes
-- **API Gateway 5XX Errors**: Alerts when server errors exceed 5 per 5 minutes
-- **OpenSearch Health**: Alerts when cluster status is not green
-
-### Logging
-- **API Gateway logs** with detailed request/response information
-- **Lambda logs** with structured logging
-- **OpenSearch logs** for cluster monitoring
-
-### Alerting
-- **SNS topic** for centralized alerting
-- **Email subscriptions** for immediate notification
-- **Configurable thresholds** for different environments
-
-## 🚀 Performance Optimizations
-
-### Lambda Performance
-- **Increased memory** to 1024MB for better CPU allocation
-- **Reserved concurrency** to prevent throttling
-- **VPC configuration** for low-latency OpenSearch access
-
-### S3 Lifecycle Management
-- **Automatic transitions** to cost-effective storage classes
-- **Data retention policies** to manage storage costs
-- **Incomplete multipart cleanup** to prevent orphaned uploads
-
-## 🔄 Backup & Disaster Recovery
-
-### Data Protection
-- **S3 versioning** for point-in-time recovery
-- **Cross-region replication** (consider for production)
-- **Automated backups** via lifecycle policies
-
-### Recovery Procedures
-1. **Infrastructure recovery**: Use Terraform to recreate resources
-2. **Data recovery**: Restore from S3 versions or cross-region copies
-3. **Application recovery**: Redeploy Lambda functions and API Gateway
+- **S3**: Server-side encryption, public access blocked, versioning enabled
+- **OpenSearch**: Fine-grained access control, IP restrictions, encryption at rest/in transit
+- **API Gateway**: API key authentication, usage plans, logging
+- **Lambda**: VPC isolation, IAM least privilege
+- **CloudWatch**: Alarms for errors, duration, and API metrics
 
 ## 📋 Deployment Checklist
-
-Before deploying to production:
 
 - [ ] Update `allowed_ip_addresses` with production IP ranges
 - [ ] Change default passwords in `terraform.tfvars`
