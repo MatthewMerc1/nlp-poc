@@ -63,9 +63,11 @@ class GutenbergUploader:
             response.raise_for_status()
             
             # Clean the filename
-            filename = re.sub(r'[^\w\s-]', '', book['title']).strip()
-            filename = re.sub(r'[-\s]+', '-', filename)
-            filename = f"{filename}-{book['author'].replace(' ', '-')}.txt"
+            clean_title = re.sub(r'[^\w\s-]', '', book['title']).strip()
+            clean_title = re.sub(r'[-\s]+', '-', clean_title)
+            clean_author = re.sub(r'[^\w\s-]', '', book['author']).strip()
+            clean_author = re.sub(r'[-\s]+', '-', clean_author)
+            filename = f"{clean_title}__by__{clean_author}.txt"
             
             # Save locally first
             with open(filename, 'w', encoding='utf-8') as f:

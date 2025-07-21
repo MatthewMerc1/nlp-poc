@@ -370,6 +370,21 @@ Character summary:"""
         
         return "Unknown Author"
     
+    def extract_title_and_author(self, s3_key: str, cleaned_text: str) -> (str, str):
+        """Extract clean book title and author from S3 key and text, using '__by__' separator if present."""
+        base = os.path.basename(s3_key).replace('.txt', '')
+        if '__by__' in base:
+            title, author = base.split('__by__', 1)
+            title = title.replace('-', ' ').strip()
+            author = author.replace('-', ' ').strip()
+        else:
+            # fallback: previous logic
+            base = re.sub(r',\s*$', '', base)
+            parts = re.split(r' by |,', base)
+            title = parts[0].strip()
+            author = self.extract_author_from_text(cleaned_text)
+        return title, author
+    
     def upload_embeddings_to_s3(self, book_title: str, embeddings: dict, s3_client=None):
         """Upload embeddings to S3 under the embeddings/ folder as a JSON file."""
         import io
@@ -391,10 +406,8 @@ Character summary:"""
     
     def process_single_book(self, s3_key: str, chunk_size: int = 8000, overlap: int = 500) -> Optional[Dict]:
         """Process a single book and return the book data for bulk indexing."""
-        book_title = os.path.basename(s3_key).replace('.txt', '')
-        
-        logger.info(f"Processing book: {book_title}")
-        
+        #book_title = os.path.basename(s3_key).replace('.txt', '')
+        #logger.info(f"Processing book: {book_title}")
         try:
             # Initialize AWS clients in this process (to avoid pickling issues)
             if hasattr(self, 'aws_profile') and self.aws_profile:
@@ -412,8 +425,8 @@ Character summary:"""
             
             cleaned_text = self.clean_text(text_content)
             logger.info(f"Cleaned text length: {len(cleaned_text)} characters")
-            
-            author = self.extract_author_from_text(cleaned_text)
+            book_title, author = self.extract_title_and_author(s3_key, cleaned_text)
+            logger.info(f"Extracted title: {book_title}")
             logger.info(f"Extracted author: {author}")
             
             # Generate chunk summaries
@@ -432,6 +445,11 @@ Character summary:"""
             
             logger.info(f"Generated {len(chunk_summaries)} chunk summaries")
             
+            # Generate genre summary
+            genre_prompt = f"""Identify the primary literary genre(s) for \"{book_title}\" by {author} based on the text and section summaries. Respond with a short phrase."""
+            genre_summary = self._generate_chunk_summary(bedrock_client, genre_prompt, 1, 1)
+            logger.info(f"Generated genre summary: {genre_summary}")
+            
             # Generate multiple types of book summaries
             logger.info("Generating book summaries...")
             book_summaries = self._generate_book_summary(bedrock_client, chunk_summaries, book_title, author)
@@ -440,13 +458,12 @@ Character summary:"""
                 return None
             
             # Create combined summary for primary embedding
-            combined_summary = f"{book_summaries['plot_summary']}\n\n{book_summaries['thematic_analysis']}\n\n{book_summaries['character_summary']}"
+            combined_summary = f"{book_summaries['plot_summary']}\n\n{book_summaries['thematic_analysis']}\n\n{book_summaries['character_summary']}\n\n{genre_summary}"
             
             # Generate embeddings for each summary type
             logger.info("Generating multiple embeddings...")
             embeddings = {}
-            
-            for summary_type, summary_text in book_summaries.items():
+            for summary_type, summary_text in list(book_summaries.items()) + [("genre", genre_summary)]:
                 logger.info(f"Generating embedding for {summary_type}")
                 embedding = self._generate_embedding(bedrock_client, summary_text)
                 if embedding:
@@ -470,12 +487,14 @@ Character summary:"""
                 'plot_summary': book_summaries['plot_summary'],
                 'thematic_analysis': book_summaries['thematic_analysis'],
                 'character_summary': book_summaries['character_summary'],
+                'genre': genre_summary,
                 'combined_summary': combined_summary,
                 'total_chunks': len(chunks),
                 'chunk_summaries': chunk_summaries,
                 'plot_embedding': embeddings.get('plot_summary_embedding', []),
                 'thematic_embedding': embeddings.get('thematic_analysis_embedding', []),
                 'character_embedding': embeddings.get('character_summary_embedding', []),
+                'genre_embedding': embeddings.get('genre_embedding', []),
                 'combined_embedding': embeddings.get('combined_embedding', []),
                 'embedding_model_id': self.embedding_model_id,
                 'summary_model_id': self.summary_model_id,
