@@ -73,6 +73,11 @@ module "lambda" {
     Environment = "dev"
     Project     = "nlp-poc"
   }
+  # Enable Lambda to run in the VPC
+  vpc_config = {
+    subnet_ids         = module.vpc.private_subnet_ids
+    security_group_ids = [module.vpc.batch_security_group_id]
+  }
 }
 
 # Use API Gateway module
