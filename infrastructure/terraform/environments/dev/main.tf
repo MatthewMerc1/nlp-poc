@@ -16,6 +16,13 @@ provider "aws" {
   profile = var.aws_profile
 }
 
+module "vpc" {
+  source  = "../../modules/vpc"
+  vpc_cidr = "10.0.0.0/16"
+  vpc_name = "nlp-poc-vpc"
+  azs      = ["us-east-1a", "us-east-1b"]
+}
+
 # Use the S3 module - much simpler than 161 lines of S3 configuration!
 module "data_bucket" {
   source = "../../modules/s3"
@@ -107,4 +114,26 @@ module "monitoring" {
     Environment = "dev"
     Project     = "nlp-poc"
   }
+} 
+
+module "batch" {
+  source = "../../modules/batch"
+
+  compute_environment_name = "nlp-poc-batch-ce"
+  job_queue_name           = "nlp-poc-batch-queue"
+  job_definition_name      = "nlp-poc-batch-job"
+  job_image                = "123456789012.dkr.ecr.us-east-1.amazonaws.com/your-batch-image:latest" # TODO: Update with your ECR image URI
+  job_vcpus                = 2
+  job_memory               = 4096
+  job_command              = ["python", "your_script.py"] # TODO: Update as needed
+  job_environment          = []
+  aws_region               = var.aws_region
+
+  max_vcpus                = 32
+  min_vcpus                = 0
+  desired_vcpus            = 0
+  instance_types           = ["m5.large"]
+
+  subnet_ids               = module.vpc.private_subnet_ids
+  security_group_ids       = [module.vpc.batch_security_group_id]
 } 
